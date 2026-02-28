@@ -1,6 +1,4 @@
 
-# cybersecurity-saas
-=======
 # 🛡️ Enterprise Cybersecurity SaaS Platform
 
 ![Django](https://img.shields.io/badge/Django-4.0+-092E20?style=flat&logo=django)
