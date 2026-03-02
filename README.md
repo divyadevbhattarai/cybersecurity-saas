@@ -1,10 +1,10 @@
 
 # 🛡️ Enterprise Cybersecurity SaaS Platform
 
-![Django](https://img.shields.io/badge/Django-4.0+-092E20?style=flat&logo=django)
-![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat&logo=react)
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python)
-![License](https://img.shields.io/badge/License-MIT-green)
+[![Django](https://img.shields.io/badge/Django-4.0+-092E20?style=flat&logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev/)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 A comprehensive enterprise-grade cybersecurity platform delivering AI-driven threat detection, zero-trust architecture, autonomous incident response, and quantum-resistant cryptography. Built for modern cloud-native architectures with comprehensive protection and developer-first APIs.
 
@@ -22,7 +22,7 @@ A comprehensive enterprise-grade cybersecurity platform delivering AI-driven thr
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
 - [License](#-license)
-
+N
 ---
 
 ## 🚀 Features
