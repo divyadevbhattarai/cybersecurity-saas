@@ -233,6 +233,7 @@ A comprehensive enterprise-grade cybersecurity platform delivering AI-driven thr
 - Node.js 18+
 - PostgreSQL 14+
 - Redis 6+
+- (Optional) AWS credentials for cloud audit features
 
 ### Installation
 
@@ -259,6 +260,11 @@ pip install -r requirements.txt
 ```bash
 cp cybersecurity_backend/.env.example cybersecurity_backend/.env
 # Edit .env with your configuration
+
+# Optional: AWS credentials for cloud audit features
+# AWS_ACCESS_KEY_ID=your_access_key
+# AWS_SECRET_ACCESS_KEY=your_secret_key
+# AWS_REGION=us-east-1
 ```
 
 5. **Run database migrations**
@@ -273,12 +279,18 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
+The API will be available at http://localhost:8000
+- Swagger UI: http://localhost:8000/api/v1/docs/
+- ReDoc: http://localhost:8000/api/v1/redoc/
+
 7. **Set up frontend**
 ```bash
 cd cybersecurity-saas-frontend
 npm install
 npm start
 ```
+
+The frontend will be available at http://localhost:3000
 
 ### Docker Setup (Alternative)
 
@@ -291,43 +303,63 @@ docker-compose up --build
 
 ## 📚 API Documentation
 
-### Authentication Endpoints
+### API Versioning
+All API endpoints are versioned under `/api/v1/`. Interactive API documentation is available at:
+- **Swagger UI**: http://localhost:8000/api/v1/docs/
+- **ReDoc**: http://localhost:8000/api/v1/redoc/
+- **OpenAPI Schema**: http://localhost:8000/
+
+### Authentication End/api/v1/schemapoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/login/` | User login |
-| POST | `/api/auth/logout/` | User logout |
-| POST | `/api/auth/register/` | User registration |
-| POST | `/api/auth/mfa/verify/` | MFA verification |
-| POST | `/api/auth/mfa/setup/` | MFA setup |
-| POST | `/api/auth/password/reset/` | Password reset |
+| POST | `/api/v1/users/register/` | User registration |
+| POST | `/api/v1/users/login/` | User login (returns JWT tokens) |
+| POST | `/api/v1/users/logout/` | User logout |
+| GET | `/api/v1/users/me/` | Get current user profile |
+| PUT/PATCH | `/api/v1/users/me/` | Update current user profile |
+
+### JWT Authentication
+All protected endpoints require JWT authentication. Include the access token in the Authorization header:
+```
+Authorization: Bearer YOUR_ACCESS_TOKEN
+```
 
 ### Core Service Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET/POST | `/api/breaches/` | Breach monitoring |
-| GET/POST | `/api/ztna/profiles/` | ZTNA profiles |
-| GET/POST | `/api/ztna/biometrics/` | Biometric profiles |
-| GET/POST | `/api/ztna/web3-identity/` | Web3 identity |
-| GET/POST | `/api/ml-model/threats/` | Threat detection |
-| GET/POST | `/api/ml-model/predictive/` | Predictive modeling |
-| GET/POST | `/api/ml-model/copilot/` | AI Security Copilot |
-| GET/POST | `/api/soar/playbooks/` | SOAR playbooks |
-| GET/POST | `/api/soar/agents/` | Security agents |
-| GET/POST | `/api/cloud-audits/compliance/` | Compliance monitoring |
-| GET/POST | `/api/sbom/` | SBOM management |
-| GET/POST | `/api/quantum/` | Quantum cryptography |
-| GET/POST | `/api/rasp/` | RASP protection |
-| GET/POST | `/api/deception/` | Deceptive security |
-| GET/POST | `/api/confidential/` | Confidential computing |
-| GET/POST | `/api/audit/` | Audit trail |
+| GET/POST | `/api/v1/breaches/` | Breach monitoring (CRUD) |
+| GET/PUT/DELETE | `/api/v1/breaches/{id}/` | Breach detail (CRUD) |
+| GET/POST | `/api/v1/ztna/profiles/` | ZTNA access profiles |
+| GET/POST | `/api/v1/ztna/biometrics/` | Biometric profiles |
+| GET/POST | `/api/v1/ztna/web3-identity/` | Web3 identity management |
+| GET/POST | `/api/v1/ztna/access-requests/` | ZTNA access requests |
+| GET/POST | `/api/v1/ml/anomalies/` | ML anomaly detection (CRUD) |
+| GET/POST | `/api/v1/ml/threats/detect/` | AI threat detection |
+| GET/POST | `/api/v1/soar/playbooks/` | SOAR playbooks |
+| GET/POST | `/api/v1/soar/agents/` | Security agents |
+| GET/POST | `/api/v1/soar/runs/executions/` | Playbook executions |
+| GET/POST | `/api/v1/cloud-audits/` | Audit results (CRUD) |
+| GET/POST | `/api/v1/cloud-audits/run/` | Run cloud compliance audit |
+| GET/POST | `/api/v1/sbom/` | SBOM management (CRUD) |
+| GET/POST | `/api/v1/quantum-crypto/keys/` | Quantum crypto key management |
+| GET/POST | `/api/v1/quantum-crypto/algorithms/` | Cryptographic algorithms |
+| GET/POST | `/api/v1/quantum-crypto/rotation-history/` | Key rotation history |
+| GET/POST | `/api/v1/rasp/events/attacks/` | RASP attack events |
+| GET/POST | `/api/v1/rasp/events/stats/` | RASP statistics |
+| GET/POST | `/api/v1/deception/honeypots/` | Honeypot management |
+| GET/POST | `/api/v1/deception/canaries/` | Canary token management |
+| GET/POST | `/api/v1/confidential-computing/enclaves/` | Enclave management |
+| GET/POST | `/api/v1/audit-trail/` | Audit trail logs |
+| GET/POST | `/api/v1/privacy-ml/participants/` | Federated learning participants |
+| GET/POST | `/api/v1/privacy-ml/models/` | Privacy-preserving models |
 
 ### Example: Threat Detection
 
 ```bash
 # Submit suspicious activity for AI analysis
-curl -X POST http://localhost:8000/api/ml-model/threats/detect/ \
+curl -X POST http://localhost:8000/api/v1/ml/threats/detect/ \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -351,10 +383,11 @@ curl -X POST http://localhost:8000/api/ml-model/threats/detect/ \
   "anomaly_type": "credential_stuffing",
   "automated_action": "challenge_mfa"
 }
-🌍 Environment Variables
-bash
+```
 
-Copy code
+## 🌍 Environment Variables
+
+```bash
 # Application
 NODE_ENV=production
 APP_NAME=cybersecurity-saas
@@ -364,6 +397,8 @@ API_VERSION=v1
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=cybersec_db
+DB_USER=your_user
+DB_PASSWORD=your_password
 DB_SSL=true
 
 # Redis (Caching & Sessions)
@@ -371,15 +406,17 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=
 
-# AI/ML Service
-AI_MODEL_ENDPOINT=http://ml-service:8501
-AI_INFERENCE_MODE=production
-ML_MODEL_VERSION=v2.1.0
-
-# Security
+# JWT Authentication
 JWT_SECRET=<secret>
 JWT_EXPIRY=15m
 REFRESH_TOKEN_EXPIRY=7d
+
+# AWS (Optional - for cloud audit features)
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=us-east-1
+
+# Security
 ENCRYPTION_ALGORITHM=aes-256-gcm
 HASH_ALGORITHM=argon2
 
@@ -396,88 +433,98 @@ CRYPTO_NEXT_GEN=ml-kem-1024
 ENCLAVE_ENABLED=false
 SECURE_ENCLAVE_TYPE=sgx
 
-# External Services
-THREAT_INTEL_API_KEY=<key>
-BLOCKCHAIN_NODE_URL=<url>
-SIEM_INTEGRATION_ENABLED=true
-
 # Monitoring
 LOG_LEVEL=info
 TRACING_ENABLED=true
 METRICS_ENDPOINT=/metrics
-📅 Updated Roadmap (2026-2028)
-Phase 1: Foundation (Q1-Q2 2026)
-[x] Adaptive Authentication & Zero-Trust
-[x] AI-Driven Anomaly Detection
-[ ] Real-time Behavioral Biometrics
-Phase 2: Intelligence (Q3-Q4 2026)
-[ ] Predictive Threat Modeling
-[ ] Automated SOAR Playbooks
-[ ] Continuous Compliance Monitoring
-Phase 3: Advanced Defense (Q1-Q2 2027)
-[ ] RASP Implementation
-[ ] Deceptive Security Framework
-[ ] Blockchain Audit System
-Phase 4: Future-Ready (Q3-Q4 2027)
-[ ] Quantum-Resistant Cryptography
-[ ] Confidential Computing
-[ ] Web3 Identity Support
-Phase 5: Next-Gen (2028)
-[ ] Autonomous Security Agents
-[ ] Predictive Security Mesh
-[ ] AI Security Copilot
-💡 Competitive Differentiation
-Traditional IAM
+```
 
-Our Platform
+## 📅 Roadmap Status (2026-2028)
 
-Reactive security
+### Phase 1: Foundation (Q1-Q2 2026)
+- [x] Adaptive Authentication & Zero-Trust
+- [x] AI-Driven Anomaly Detection
+- [x] Real-time Behavioral Biometrics
+- [x] User registration and JWT authentication
+- [x] REST API with full CRUD operations
 
-Predictive & proactive
+### Phase 2: Intelligence (Q3-Q4 2026)
+- [x] Predictive Threat Modeling
+- [x] Automated SOAR Playbooks
+- [x] Continuous Compliance Monitoring
+- [x] SBOM Management
 
-Static policies
+### Phase 3: Advanced Defense (Q1-Q2 2027)
+- [x] RASP Implementation
+- [x] Deceptive Security Framework
+- [x] Blockchain Audit System
+- [x] Quantum-Resistant Cryptography (key management)
 
-Dynamic, AI-driven policies
+### Phase 4: Future-Ready (Q3-Q4 2027)
+- [ ] Advanced AI-powered threat detection
+- [ ] Zero Trust Network Architecture expansion
+- [ ] Enhanced compliance reporting (SOC 2, ISO 27001)
+- [ ] Real-time security analytics
 
-Point-in-time checks
+### Phase 5: Next-Gen (2028)
+- [ ] Autonomous Security Agents
+- [ ] Predictive Security Mesh
+- [ ] AI Security Copilot
 
-Continuous verification
+## Current Implementation Status
 
-Manual compliance
+### Implemented Features (✅)
+- Django REST API with 9 integrated apps
+- JWT authentication (register, login, logout)
+- Swagger/OpenAPI documentation at `/api/v1/docs/`
+- ReDoc documentation at `/api/v1/redoc/`
+- Full CRUD operations on all apps
+- React frontend with 12 pages
+- Frontend-backend API integration
 
-Automated, continuous compliance
+### Optional Features
+- Cloud Audits: Works with or without AWS credentials (returns demo data when not configured)
 
-Siloed security
+## 💡 Competitive Differentiation
 
-Integrated security mesh
+| Traditional IAM | Our Platform |
+|-----------------|--------------|
+| Reactive security | Predictive & proactive |
+| Static policies | Dynamic, AI-driven policies |
+| Point-in-time checks | Continuous verification |
+| Manual compliance | Automated, continuous compliance |
+| Siloed security | Integrated security mesh |
 
-🔮 Emerging Technologies Roadmap
+## 🔮 Emerging Technologies Roadmap
+
 Upcoming Features for 2028+
-AI Security Copilot
 
-Natural language threat querying
-Automated security recommendations
-Conversational incident response
-Autonomous Security Agents
+### AI Security Copilot
+- Natural language threat querying
+- Automated security recommendations
+- Conversational incident response
 
-Self-healing infrastructure
-Auto-remediation without human intervention
-Predictive vulnerability patching
-Digital Immune System
+### Autonomous Security Agents
+- Self-healing infrastructure
+- Auto-remediation without human intervention
+- Predictive vulnerability patching
 
-Biological-inspired security
-Adaptive defense mechanisms
-Self-diagnostic and repair
-Extended Reality (XR) Security
+### Digital Immune System
+- Biological-inspired security
+- Adaptive defense mechanisms
+- Self-diagnostic and repair
 
-Immersive security dashboards
-VR incident response rooms
-AR threat visualization
-📝 Contributing
+### Extended Reality (XR) Security
+- Immersive security dashboards
+- VR incident response rooms
+- AR threat visualization
+
+## 📝 Contributing
+
 We welcome contributions! Please see our Contributing Guidelines and join our Discord Community for discussions.
 
 Contact: dev@cybersec-platform.com
 Documentation: docs.cybersec-platform.com
 Status: status.cybersec-platform.com
 
-This document is continuously updated. Last modified: Feburary 2026
+This document is continuously updated. Last modified: March 2026

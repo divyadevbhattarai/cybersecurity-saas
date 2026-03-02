@@ -1,8 +1,12 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8000/api",
+  baseURL: process.env.REACT_APP_API_URL,
 });
+
+if (!process.env.REACT_APP_API_URL) {
+  console.warn("REACT_APP_API_URL environment variable is not set");
+}
 
 // Attach JWT token to all requests
 api.interceptors.request.use(
@@ -32,7 +36,7 @@ api.interceptors.response.use(
       if (refreshToken) {
         try {
           const response = await axios.post(
-            `${process.env.REACT_APP_API_URL}/auth/token/refresh/`,
+            `${process.env.REACT_APP_API_URL}/users/token/refresh/`,
             { refresh: refreshToken }
           );
 

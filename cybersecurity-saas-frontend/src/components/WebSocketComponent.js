@@ -10,13 +10,10 @@ const WebSocketComponent = () => {
   const connectWebSocket = () => {
     const wsUrl = process.env.REACT_APP_WS_URL
       ? `${process.env.REACT_APP_WS_URL}/anomaly_alerts/`
-      : "ws://localhost:8000/ws/anomaly_alerts/";
-
-    const token = localStorage.getItem("access_token");
-    const url = token ? `${wsUrl}?token=${token}` : wsUrl;
+      : "wss://localhost:8000/ws/anomaly_alerts/";
 
     try {
-      socketRef.current = new WebSocket(url);
+      socketRef.current = new WebSocket(wsUrl);
 
       socketRef.current.onopen = () => {
         console.log("WebSocket connected");

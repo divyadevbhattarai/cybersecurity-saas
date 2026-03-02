@@ -29,7 +29,6 @@ function Dashboard() {
       const [breachesRes] = await Promise.all([api.get("/breaches/")]);
       setBreaches(breachesRes.data);
     } catch (err) {
-      console.error("Error fetching data", err);
       setError("Failed to load data. Please try again later.");
     } finally {
       setLoading(false);
@@ -42,7 +41,7 @@ function Dashboard() {
       const response = await api.get("/cloud-audits/audit/");
       setAuditResults(response.data);
     } catch (err) {
-      console.error("Error running audit", err);
+      setError("Failed to run cloud audit. Please try again.");
     } finally {
       setAuditLoading(false);
     }
@@ -54,7 +53,7 @@ function Dashboard() {
       const response = await api.get("/ml-model/threat-detection/");
       setAnomalies(response.data.anomalies || []);
     } catch (err) {
-      console.error("Error running threat detection", err);
+      setError("Failed to run threat detection. Please try again.");
     } finally {
       setThreatLoading(false);
     }
@@ -63,6 +62,7 @@ function Dashboard() {
   const handleLogout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    localStorage.removeItem("token_expiry");
     dispatch(logoutUser());
     navigate("/");
   };
@@ -80,10 +80,22 @@ function Dashboard() {
   };
 
   const menuItems = [
-    { id: "overview", label: "Overview", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-    { id: "audits", label: "Cloud Audits", icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" },
-    { id: "threats", label: "Threat Detection", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
-    { id: "alerts", label: "Real-Time Alerts", icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" },
+    { id: "overview", label: "Overview", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", path: "/dashboard" },
+    { id: "incidents", label: "Incidents", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01", path: "/incidents" },
+    { id: "audits", label: "Cloud Audits", icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z", path: null },
+    { id: "threats", label: "Threat Detection", icon: "M13 10V3L4 14h7v7l9-11h-7z", path: null },
+    { id: "alerts", label: "Real-Time Alerts", icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9", path: null },
+    { id: "ztna", label: "ZTNA", icon: "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z", path: "/ztna" },
+    { id: "soar", label: "SOAR", icon: "M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z", path: "/soar" },
+    { id: "sbom", label: "SBOM", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01", path: "/sbom" },
+    { id: "rasp", label: "RASP", icon: "M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4", path: "/rasp" },
+    { id: "deception", label: "Deception", icon: "M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z", path: "/deception" },
+    { id: "audit", label: "Audit", icon: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", path: "/audit" },
+    { id: "compliance", label: "Compliance", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", path: "/compliance" },
+    { id: "quantum", label: "Quantum Crypto", icon: "M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z", path: "/quantum-crypto" },
+    { id: "confidential", label: "Confidential", icon: "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z", path: "/confidential-computing" },
+    { id: "privacy", label: "Privacy ML", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z", path: "/privacy-ml" },
+    { id: "training", label: "Training", icon: "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253", path: "/training" },
   ];
 
   if (loading) {
@@ -114,16 +126,29 @@ function Dashboard() {
         </div>
         <nav className="sidebar-nav">
           {menuItems.map((item) => (
-            <button
-              key={item.id}
-              className={`sidebar-link ${activeTab === item.id ? "active" : ""}`}
-              onClick={() => setActiveTab(item.id)}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d={item.icon} />
-              </svg>
-              <span>{item.label}</span>
-            </button>
+            item.path ? (
+              <Link
+                key={item.id}
+                to={item.path}
+                className={`sidebar-link ${activeTab === item.id ? "active" : ""}`}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={item.icon} />
+                </svg>
+                <span>{item.label}</span>
+              </Link>
+            ) : (
+              <button
+                key={item.id}
+                className={`sidebar-link ${activeTab === item.id ? "active" : ""}`}
+                onClick={() => setActiveTab(item.id)}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={item.icon} />
+                </svg>
+                <span>{item.label}</span>
+              </button>
+            )
           ))}
         </nav>
         <div className="sidebar-footer">
@@ -131,7 +156,7 @@ function Dashboard() {
             <div className="user-avatar">{user?.username?.charAt(0).toUpperCase() || "U"}</div>
             <div className="user-details">
               <span className="user-name">{user?.username || "User"}</span>
-              <span className="user-role">Administrator</span>
+              <span className="user-role">{user?.role || "User"}</span>
             </div>
           </div>
           <button className="logout-btn" onClick={handleLogout}>
@@ -271,18 +296,6 @@ function Dashboard() {
                         </svg>
                         {threatLoading ? "Analyzing..." : "Detect Threats"}
                       </button>
-                      <Link to="/incidents" className="action-btn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                        View Incidents
-                      </Link>
-                      <Link to="/training" className="action-btn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                        </svg>
-                        Security Training
-                      </Link>
                     </div>
                   </div>
                 </div>
