@@ -22,7 +22,6 @@ A comprehensive enterprise-grade cybersecurity platform delivering AI-driven thr
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
 - [License](#-license)
-N
 ---
 
 ## 🚀 Features
