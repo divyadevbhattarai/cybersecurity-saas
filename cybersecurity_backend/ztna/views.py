@@ -1,27 +1,26 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db import transaction
 from eth_account import Account
-import hashlib
 import secrets
+from security.viewsets import TenantAwareModelViewSet
+from security.responses import success_response, error_response
 from .models import BiometricProfile, Web3Identity, ZTNAProfile, AccessRequest
 from .serializers import (
     BiometricProfileSerializer, Web3IdentitySerializer,
     ZTNAProfileSerializer, AccessRequestSerializer,
     BiometricVerifySerializer, Web3AuthSerializer
 )
+from security.permissions import TenantPermission, RoleBasedPermission, Permission
+from security.middleware import TenantContext
 
 
-class BiometricProfileViewSet(viewsets.ModelViewSet):
-    queryset = BiometricProfile.objects.all()
+class BiometricProfileViewSet(TenantAwareModelViewSet):
     serializer_class = BiometricProfileSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+    permission_classes = (TenantPermission,)
+    queryset = BiometricProfile.objects.select_related('tenant', 'user').all()
     
     @action(detail=False, methods=['post'])
     def verify(self, request):
@@ -29,9 +28,11 @@ class BiometricProfileViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         device_id = serializer.validated_data['device_id']
+        tenant_id = TenantContext.get_tenant()
         
         try:
             profile = BiometricProfile.objects.get(
+                tenant_id=tenant_id,
                 user=request.user,
                 device_id=device_id
             )
@@ -45,22 +46,17 @@ class BiometricProfileViewSet(viewsets.ModelViewSet):
                 profile.is_verified = True
                 profile.last_verified = timezone.now()
                 profile.save()
-                return Response({
-                    'verified': True,
-                    'similarity': similarity,
-                    'message': 'Biometric verification successful'
-                })
+                return success_response(
+                    data={'verified': True, 'similarity': similarity},
+                    message='Biometric verification successful'
+                )
             
-            return Response({
-                'verified': False,
-                'similarity': similarity,
-                'message': 'Biometric verification failed'
-            })
+            return success_response(
+                data={'verified': False, 'similarity': similarity},
+                message='Biometric verification failed'
+            )
         except BiometricProfile.DoesNotExist:
-            return Response({
-                'verified': False,
-                'message': 'Device not registered'
-            }, status=status.HTTP_404_NOT_FOUND)
+            return error_response('Device not registered', 'NOT_FOUND', status.HTTP_404_NOT_FOUND)
     
     def _calculate_similarity(self, input_pattern, stored_pattern):
         if not stored_pattern:
@@ -69,20 +65,19 @@ class BiometricProfileViewSet(viewsets.ModelViewSet):
         return matching_keys / max(len(stored_pattern), 1)
 
 
-class Web3IdentityViewSet(viewsets.ModelViewSet):
-    queryset = Web3Identity.objects.all()
+class Web3IdentityViewSet(TenantAwareModelViewSet):
     serializer_class = Web3IdentitySerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+    permission_classes = (TenantPermission,)
+    queryset = Web3Identity.objects.select_related('tenant', 'user').all()
     
     @action(detail=False, methods=['post'])
     def generate_nonce(self, request):
         nonce = secrets.token_hex(32)
         wallet_address = request.data.get('wallet_address')
+        tenant_id = TenantContext.get_tenant()
         
         identity, created = Web3Identity.objects.get_or_create(
+            tenant_id=tenant_id,
             user=request.user,
             defaults={'wallet_address': wallet_address, 'nonce': nonce}
         )
@@ -93,10 +88,9 @@ class Web3IdentityViewSet(viewsets.ModelViewSet):
         
         message = f"Sign this message to authenticate. Nonce: {nonce}"
         
-        return Response({
-            'nonce': nonce,
-            'message': message
-        })
+        return success_response(
+            data={'nonce': nonce, 'message': message}
+        )
     
     @action(detail=False, methods=['post'])
     def verify_signature(self, request):
@@ -106,9 +100,10 @@ class Web3IdentityViewSet(viewsets.ModelViewSet):
         wallet_address = serializer.validated_data['wallet_address']
         signature = serializer.validated_data['signature']
         message = serializer.validated_data['message']
+        tenant_id = TenantContext.get_tenant()
         
         try:
-            identity = Web3Identity.objects.get(wallet_address=wallet_address, user=request.user)
+            identity = Web3Identity.objects.get(tenant_id=tenant_id, wallet_address=wallet_address, user=request.user)
             
             try:
                 recovered = Account.from_message(message)
@@ -116,31 +111,25 @@ class Web3IdentityViewSet(viewsets.ModelViewSet):
                     identity.is_verified = True
                     identity.signature = signature
                     identity.save()
-                    return Response({
-                        'verified': True,
-                        'message': 'Web3 identity verified'
-                    })
+                    return success_response(
+                        data={'verified': True},
+                        message='Web3 identity verified'
+                    )
             except Exception as e:
                 pass
             
-            return Response({
-                'verified': False,
-                'message': 'Signature verification failed'
-            })
+            return success_response(
+                data={'verified': False},
+                message='Signature verification failed'
+            )
         except Web3Identity.DoesNotExist:
-            return Response({
-                'verified': False,
-                'message': 'Web3 identity not found'
-            }, status=status.HTTP_404_NOT_FOUND)
+            return error_response('Web3 identity not found', 'NOT_FOUND', status.HTTP_404_NOT_FOUND)
 
 
-class ZTNAProfileViewSet(viewsets.ModelViewSet):
-    queryset = ZTNAProfile.objects.all()
+class ZTNAProfileViewSet(TenantAwareModelViewSet):
     serializer_class = ZTNAProfileSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+    permission_classes = (TenantPermission,)
+    queryset = ZTNAProfile.objects.select_related('tenant', 'user').all()
     
     @action(detail=False, methods=['post'])
     def assess_trust(self, request):
@@ -148,11 +137,13 @@ class ZTNAProfileViewSet(viewsets.ModelViewSet):
             device_id = request.data.get('device_id')
             ip_address = request.data.get('ip_address')
             device_fingerprint = request.data.get('device_fingerprint')
+            tenant_id = TenantContext.get_tenant()
             
             trust_score = 50.0
             risk_factors = []
             
             biometric_exists = BiometricProfile.objects.filter(
+                tenant_id=tenant_id,
                 user=request.user, device_id=device_id, is_verified=True
             ).exists()
             
@@ -162,6 +153,7 @@ class ZTNAProfileViewSet(viewsets.ModelViewSet):
                 risk_factors.append('Unverified device')
             
             profile, created = ZTNAProfile.objects.select_for_update().get_or_create(
+                tenant_id=tenant_id,
                 user=request.user,
                 device_id=device_id,
                 defaults={
@@ -188,7 +180,7 @@ class ZTNAProfileViewSet(viewsets.ModelViewSet):
             else:
                 access_level = 'low'
             
-            return Response({
+            return success_response(data={
                 'trust_score': trust_score,
                 'is_trusted': trust_score >= 70,
                 'access_level': access_level,
@@ -201,16 +193,13 @@ class ZTNAProfileViewSet(viewsets.ModelViewSet):
         profile = self.get_object()
         profile.session_active = False
         profile.save()
-        return Response({'message': 'Session revoked successfully'})
+        return success_response(message='Session revoked successfully')
 
 
-class AccessRequestViewSet(viewsets.ModelViewSet):
-    queryset = AccessRequest.objects.all()
+class AccessRequestViewSet(TenantAwareModelViewSet):
     serializer_class = AccessRequestSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return self.queryset.filter(user=self.request.user)
+    permission_classes = (TenantPermission,)
+    queryset = AccessRequest.objects.select_related('tenant', 'user', 'approved_by').all()
     
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -220,7 +209,7 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         access_request.approved_at = timezone.now()
         access_request.expires_at = timezone.now() + timezone.timedelta(hours=request.data.get('duration', 24))
         access_request.save()
-        return Response({'message': 'Access request approved'})
+        return success_response(message='Access request approved')
     
     @action(detail=True, methods=['post'])
     def deny(self, request, pk=None):
@@ -229,4 +218,4 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         access_request.approved_by = request.user
         access_request.approved_at = timezone.now()
         access_request.save()
-        return Response({'message': 'Access request denied'})
+        return success_response(message='Access request denied')

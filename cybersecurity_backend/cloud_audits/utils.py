@@ -1,12 +1,20 @@
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 
-# Initialize AWS S3 client
-s3_client = boto3.client('s3')
+def check_credentials():
+    """Check if AWS credentials are available."""
+    try:
+        boto3.client('sts').get_caller_identity()
+        return True
+    except (ClientError, NoCredentialsError):
+        return False
 
 def check_open_s3_buckets():
     """Check for open (public) S3 buckets in AWS."""
+    if not check_credentials():
+        return []
     try:
+        s3_client = boto3.client('s3')
         response = s3_client.list_buckets()
         open_buckets = []
 
@@ -23,13 +31,15 @@ def check_open_s3_buckets():
 
         return open_buckets
 
-    except ClientError as e:
+    except (ClientError, NoCredentialsError) as e:
         print(f"Error checking S3 buckets: {e}")
         return []
 
 
 def check_iam_roles():
     """Check for overly permissive IAM roles."""
+    if not check_credentials():
+        return ["AWS credentials not configured"]
     try:
         iam_client = boto3.client('iam')
         response = iam_client.list_roles()
@@ -37,20 +47,22 @@ def check_iam_roles():
 
         for role in response.get('Roles', []):
             role_name = role['RoleName']
-            # Check for permissive policies (simplified check)
             attached_policies = iam_client.list_attached_role_policies(RoleName=role_name)
             for policy in attached_policies.get('AttachedPolicies', []):
                 if policy['PolicyName'] == 'AdministratorAccess':
                     issues.append(f"Role {role_name} has AdministratorAccess")
 
-        return issues if issues else "No IAM issues found"
-    except ClientError as e:
-        return f"Error checking IAM roles: {e}"
+        return issues if issues else ["No IAM issues found"]
+    except (ClientError, NoCredentialsError) as e:
+        return [f"Error checking IAM roles: {e}"]
 
 
 def check_kms_encryption():
     """Check for unencrypted S3 buckets."""
+    if not check_credentials():
+        return ["AWS credentials not configured"]
     try:
+        s3_client = boto3.client('s3')
         response = s3_client.list_buckets()
         issues = []
 
@@ -64,13 +76,15 @@ def check_kms_encryption():
                 if 'ServerSideEncryptionConfigurationNotFoundError' in str(e):
                     issues.append(f"Bucket {bucket_name} does not have encryption enabled")
 
-        return issues if issues else "All buckets are encrypted"
-    except ClientError as e:
-        return f"Error checking KMS encryption: {e}"
+        return issues if issues else ["All buckets are encrypted"]
+    except (ClientError, NoCredentialsError) as e:
+        return [f"Error checking KMS encryption: {e}"]
 
 
 def check_cloudtrail():
     """Check if CloudTrail is enabled."""
+    if not check_credentials():
+        return "AWS credentials not configured"
     try:
         cloudtrail_client = boto3.client('cloudtrail')
         response = cloudtrail_client.describe_trails()
@@ -83,6 +97,6 @@ def check_cloudtrail():
                 return "CloudTrail is not configured for multi-region"
 
         return "CloudTrail is properly configured"
-    except ClientError as e:
+    except (ClientError, NoCredentialsError) as e:
         return f"Error checking CloudTrail: {e}"
 

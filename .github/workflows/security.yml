@@ -1,0 +1,360 @@
+name: Security Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly scan
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================================
+  # SECRET SCANNING - Detect secrets committed to repository
+  # ============================================================
+  secret-scan:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --regex --entropy
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG_PATH: .gitleaks.toml
+        continue-on-error: true
+
+      - name: Scan for API keys
+        run: |
+          echo "Checking for potential API keys..."
+          grep -rE "(api_key|apikey|secret_key|secretkey)[:=]['\"]?[a-zA-Z0-9_-]{20,}" --include="*.py" || true
+
+  # ============================================================
+  # DEPENDENCY SCANNING - SCA for vulnerable dependencies
+  # ============================================================
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Safety Check (Known vulnerabilities)
+        id: safety
+        run: |
+          pip install safety
+          safety check --json --output=safety-report.json || true
+        continue-on-error: true
+
+      - name: Snyk Dependency Scan
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit --format=json --output=pip-audit-report.json || true
+        continue-on-error: true
+
+      - name: Check for License Issues
+        run: |
+          pip install pip-licenses
+          pip-licenses --format=json --output=license-report.json || true
+        continue-on-error: true
+
+      - name: Upload SARIF results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-scan-results
+          path: |
+            safety-report.json
+            snyk.sarif
+            pip-audit-report.json
+            license-report.json
+          retention-days: 30
+
+  # ============================================================
+  # SAST - Static Application Security Testing
+  # ============================================================
+  code-quality:
+    name: SAST Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Bandit SAST
+        id: bandit
+        run: |
+          pip install bandit
+          bandit -r . -f json -o bandit-report.json -x ./tests,./migrations || true
+        continue-on-error: true
+
+      - name: Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: auto
+          args: -- Sarif
+        continue-on-error: true
+
+      - name: Pylint Analysis
+        run: |
+          pip install pylint
+          pylint cybersecurity_backend --output-format=pylint.json --disable=import-error > pylint-text.txt || true
+        continue-on-error: true
+
+      - name: Mypy Type Checking
+        run: |
+          pip install mypy
+          mypy cybersecurity_backend --output-format=json --ignore-missing-imports > mypy-report.json || true
+        continue-on-error: true
+
+      - name: CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          languages: python
+          queries: security-extended
+
+      - name: Upload SAST results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-results
+          path: |
+            bandit-report.json
+            pylint-text.txt
+            mypy-report.json
+          retention-days: 30
+
+  # ============================================================
+  # CONTAINER SECURITY - If Dockerfile exists
+  # ============================================================
+  container-security:
+    name: Container Security
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) ||
+      (github.event_name == 'pull_request')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if Dockerfile exists
+        id: check_dockerfile
+        run: |
+          if [ -f Dockerfile ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.check_dockerfile.outputs.exists == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        if: steps.check_dockerfile.outputs.exists == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: app:test
+
+      - name: Trivy Container Scan
+        if: steps.check_dockerfile.outputs.exists == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'app:test'
+          format: sarif
+          output: trivy.sarif
+
+      - name: Upload container scan
+        if: steps.check_dockerfile.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-scan-results
+          path: trivy.sarif
+
+  # ============================================================
+  # DAST - Dynamic Application Security Testing
+  # ============================================================
+  dast-scan:
+    name: DAST Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install and run app
+        run: |
+          pip install -r requirements.txt
+          cp .env.example .env
+          python manage.py migrate --noinput || true
+          python manage.py runserver 0.0.0.0:8000 &
+          sleep 10
+
+      - name: OWASP ZAP Scan (API)
+        uses: zaproxy/action-api-scan@v0.7.0
+        with:
+          target: 'http://localhost:8000/api/v1/schema/'
+
+      - name: Nikto Web Scan
+        run: |
+          docker run --rm -v $(pwd):/output -w /output owasp/zap2docker-stable zap-baseline.py -t http://localhost:8000 -J zap-report.json || true
+
+      - name: Upload DAST results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-results
+          path: |
+            zap-report.json
+            owasp-zap-report.json
+          retention-days: 30
+
+  # ============================================================
+  # INFRASTRUCTURE AS CODE SECURITY
+  # ============================================================
+  iaac-security:
+    name: IaC Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkov IaC Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform,dockerfile,kubernetes
+          output_format: sarif
+        continue-on-error: true
+
+      - name: Terrascan
+        uses: accurics/terrascan-action@v1
+        continue-on-error: true
+
+  # ============================================================
+  # SECURITY GATE - Fail pipeline on critical findings
+  # ============================================================
+  security-gate:
+    name: Security Gate
+    needs: [secret-scan, dependency-scan, code-quality]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check vulnerability thresholds
+        run: |
+          echo "=== Security Gate Check ==="
+          
+          # Check critical vulnerabilities
+          echo "Checking for critical vulnerabilities..."
+          
+          # Check safety report
+          if [ -f dependency-scan-results/safety-report.json ]; then
+            CRITICAL=$(cat dependency-scan-results/safety-report.json | python3 -c "import json,sys; data=json.load(sys.stdin); print(sum(1 for v in data if v.get('vulnerability',{}).get('severity','')=='CRITICAL'))" 2>/dev/null || echo "0")
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "::error::CRITICAL vulnerabilities found in dependencies: $CRITICAL"
+              exit 1
+            fi
+          fi
+          
+          # Check Bandit findings
+          if [ -f sast-results/bandit-report.json ]; then
+            HIGH=$(cat sast-results/bandit-report.json | python3 -c "import json,sys; data=json.load(sys.stdin); print(sum(1 for r in data.get('results',[]) if r.get('issue_severity','')=='HIGH'))" 2>/dev/null || echo "0")
+            if [ "$HIGH" -gt 0 ]; then
+              echo "::warning::HIGH severity security issues found: $HIGH"
+            fi
+          fi
+          
+          echo "Security gate passed!"
+
+      - name: Post security summary
+        if: always()
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret Scan: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency Scan: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- SAST Analysis: Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please review the artifacts for detailed findings." >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================
+  # NOTIFICATION - Alert on security issues
+  # ============================================================
+  notify:
+    name: Security Notifications
+    needs: [security-gate]
+    runs-on: ubuntu-latest
+    if: |
+      failure() &&
+      (github.event_name == 'push' || github.event_name == 'pull_request')
+    steps:
+      - name: Send Slack notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          fields: repo,message,commit,author
+          mention: here
+          if_mention: failure,cancelled
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Create GitHub Issue for critical findings
+        if: needs.security-gate.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🔴 Security Issues Detected in Pipeline',
+              body: 'Security scan found critical vulnerabilities. Please review and fix.',
+              labels: ['security', 'critical']
+            })

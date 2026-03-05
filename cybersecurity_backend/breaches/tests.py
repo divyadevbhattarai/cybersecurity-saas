@@ -2,6 +2,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.contrib.auth import get_user_model
+from users.models import Tenant
+from security.middleware import TenantContext
 from .models import Breach
 
 User = get_user_model()
@@ -9,15 +11,21 @@ User = get_user_model()
 
 class BreachModelTest(TestCase):
     def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
         self.user = User.objects.create_user(
             username="testuser",
             email="test@example.com",
-            password="testpass123"
+            password="SecureP@ssw0rd!",
+            tenant=self.tenant
         )
         self.breach = Breach.objects.create(
             name="Test Breach",
             description="A test breach description",
-            status="open"
+            status="open",
+            tenant=self.tenant
         )
 
     def test_breach_creation(self):
@@ -31,17 +39,27 @@ class BreachModelTest(TestCase):
 class BreachAPITest(TestCase):
     def setUp(self):
         self.client = APIClient()
+        self.tenant = Tenant.objects.create(
+            name="Test Tenant",
+            slug="test-tenant"
+        )
         self.user = User.objects.create_user(
             username="testuser",
             email="test@example.com",
-            password="testpass123"
+            password="SecureP@ssw0rd!",
+            tenant=self.tenant
         )
         self.client.force_authenticate(user=self.user)
+        TenantContext.set_tenant(self.tenant.id, self.tenant.slug)
         self.breach = Breach.objects.create(
             name="Test Breach",
             description="Test description",
-            status="open"
+            status="open",
+            tenant=self.tenant
         )
+
+    def tearDown(self):
+        TenantContext.clear()
 
     def test_list_breaches(self):
         response = self.client.get("/api/v1/breaches/")

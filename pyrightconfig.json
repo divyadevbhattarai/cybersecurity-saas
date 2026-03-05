@@ -1,0 +1,16 @@
+{
+  "venvPath": ".",
+  "pythonVersion": "3.13",
+  "reportMissingTypeStubs": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownLambdaType": false,
+  "reportCallInDefaultArg": false,
+  "reportMissingParameterType": false,
+  "extraPaths": ["./cybersecurity_backend"],
+  "typeCheckingMode": "basic",
+  "ignore": [
+    "**/migrations/**"
+  ]
+}

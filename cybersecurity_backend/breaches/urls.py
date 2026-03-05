@@ -1,7 +1,10 @@
-from django.urls import path
-from .views import BreachListView, BreachDetailView
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import BreachViewSet
+
+router = DefaultRouter()
+router.register('', BreachViewSet, basename='breach')
 
 urlpatterns = [
-    path('', BreachListView.as_view(), name='breach-list'),
-    path('<int:pk>/', BreachDetailView.as_view(), name='breach-detail'),
+    path('', include(router.urls)),
 ]

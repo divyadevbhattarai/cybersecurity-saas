@@ -1,10 +1,18 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from users.models import Tenant
 
 User = get_user_model()
 
 
 class BiometricProfile(models.Model):
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name='biometric_profiles',
+        null=True,
+        blank=True
+    )
     DEVICE_CHOICES = [
         ('laptop', 'Laptop'),
         ('mobile', 'Mobile'),
@@ -33,6 +41,13 @@ class BiometricProfile(models.Model):
 
 
 class Web3Identity(models.Model):
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name='web3_identities',
+        null=True,
+        blank=True
+    )
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='web3_identity')
     wallet_address = models.CharField(max_length=100, unique=True, db_index=True)
     did = models.CharField(max_length=255, unique=True)
@@ -48,6 +63,13 @@ class Web3Identity(models.Model):
 
 
 class ZTNAProfile(models.Model):
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name='ztna_profiles',
+        null=True,
+        blank=True
+    )
     ACCESS_LEVELS = [
         ('low', 'Low'),
         ('medium', 'Medium'),
@@ -79,6 +101,13 @@ class ZTNAProfile(models.Model):
 
 
 class AccessRequest(models.Model):
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name='access_requests',
+        null=True,
+        blank=True
+    )
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('approved', 'Approved'),

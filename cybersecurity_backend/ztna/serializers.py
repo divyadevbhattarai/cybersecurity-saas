@@ -1,8 +1,9 @@
 from rest_framework import serializers
+from security.serializers import SanitizedModelSerializer, BaseModelSerializer
 from .models import BiometricProfile, Web3Identity, ZTNAProfile, AccessRequest
 
 
-class BiometricProfileSerializer(serializers.ModelSerializer):
+class BiometricProfileSerializer(BaseModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     
     class Meta:
@@ -11,7 +12,7 @@ class BiometricProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'behavioral_score', 'is_verified']
 
 
-class Web3IdentitySerializer(serializers.ModelSerializer):
+class Web3IdentitySerializer(BaseModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     
     class Meta:
@@ -20,7 +21,7 @@ class Web3IdentitySerializer(serializers.ModelSerializer):
         read_only_fields = ['did', 'is_verified', 'created_at', 'updated_at']
 
 
-class ZTNAProfileSerializer(serializers.ModelSerializer):
+class ZTNAProfileSerializer(BaseModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     
     class Meta:
@@ -29,7 +30,7 @@ class ZTNAProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'trust_score', 'is_trusted']
 
 
-class AccessRequestSerializer(serializers.ModelSerializer):
+class AccessRequestSerializer(SanitizedModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     approved_by_username = serializers.CharField(source='approved_by.username', read_only=True)
     

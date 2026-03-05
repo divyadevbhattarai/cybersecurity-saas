@@ -1,10 +1,18 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from users.models import Tenant
 
 User = get_user_model()
 
 
 class AuditLog(models.Model):
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name='audit_logs',
+        null=True,
+        blank=True
+    )
     ACTION_CHOICES = [
         ('create', 'Create'),
         ('read', 'Read'),
