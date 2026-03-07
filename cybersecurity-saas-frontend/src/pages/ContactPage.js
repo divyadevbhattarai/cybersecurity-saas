@@ -1,9 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import Header from "../components/Header";
+import { useToast } from "../components/Toast";
+import { sanitizeInput } from "../utils";
 import "../index.css";
 
 function ContactPage() {
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -13,10 +16,23 @@ function ContactPage() {
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const submitInProgress = useRef(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (submitInProgress.current) return;
+    submitInProgress.current = true;
+    const sanitizedData = {
+      name: sanitizeInput(formData.name),
+      email: sanitizeInput(formData.email),
+      company: sanitizeInput(formData.company),
+      subject: sanitizeInput(formData.subject),
+      message: sanitizeInput(formData.message)
+    };
+    setFormData(sanitizedData);
     setSubmitted(true);
+    showToast("Message sent successfully! We'll get back to you shortly.", "success");
+    submitInProgress.current = false;
   };
 
   const contactInfo = [

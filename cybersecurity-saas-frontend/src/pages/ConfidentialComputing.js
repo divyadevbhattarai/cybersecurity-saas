@@ -8,7 +8,6 @@ function ConfidentialComputing() {
   const [activeTab, setActiveTab] = useState("enclaves");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [enclaves, setEnclaves] = useState([]);
   const [sessions, setSessions] = useState([]);
   const dispatch = useDispatch();
@@ -34,9 +33,12 @@ function ConfidentialComputing() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
@@ -135,8 +137,6 @@ function ConfidentialComputing() {
         </header>
 
         <div className="dashboard-content">
-          {error && <div className="alert alert-error">{error}</div>}
-
           {activeTab === "enclaves" && (
             <div className="tab-panel">
               <div className="card full-width">

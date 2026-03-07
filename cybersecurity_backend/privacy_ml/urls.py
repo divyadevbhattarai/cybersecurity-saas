@@ -1,4 +1,4 @@
-from django.urls import path, include
+from django.urls import path, include, re_path
 from rest_framework.routers import DefaultRouter
 from .views import FederatedModelViewSet, TrainingJobViewSet
 
@@ -8,4 +8,5 @@ router.register(r'training-jobs', TrainingJobViewSet, basename='training-jobs')
 
 urlpatterns = [
     path('', include(router.urls)),
+    re_path(r'^participants/$', FederatedModelViewSet.as_view({'get': 'participants'}), name='participants-alias'),
 ]

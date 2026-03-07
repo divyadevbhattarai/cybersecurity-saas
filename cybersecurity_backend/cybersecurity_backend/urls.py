@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/v1/rasp/', include('rasp.urls')),
     path('api/v1/deception/', include('deceptive_security.urls')),
     path('api/v1/audit-trail/', include('audit_trail.urls')),
+    path('api/v1/audit/', include('audit_trail.urls')),
     path('api/v1/quantum-crypto/', include('quantum_crypto.urls')),
     path('api/v1/confidential-computing/', include('confidential_computing.urls')),
     path('api/v1/privacy-ml/', include('privacy_ml.urls')),

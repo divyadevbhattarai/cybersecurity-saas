@@ -2,23 +2,19 @@ import os
 from pathlib import Path
 from datetime import timedelta
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+from dotenv import load_dotenv
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+load_dotenv(BASE_DIR / '.env')
 
-# SECURITY WARNING: keep the secret key used in production secret!
+
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
-
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -28,13 +24,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # Third party
     'rest_framework',
     'corsheaders',
     'channels',
     'drf_spectacular',
 
-    # Local apps
+    'security',
     'users',
     'breaches',
     'cloud_audits',
@@ -59,6 +54,13 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'security.middleware.ContentSecurityPolicyMiddleware',
+    'security.middleware.TenantMiddleware',
+    'security.middleware.TenantRateThrottleMiddleware',
+    'security.middleware.SQLInjectionProtectionMiddleware',
+    'security.middleware.CommandInjectionProtectionMiddleware',
+    'security.middleware.ClickjackingProtectionMiddleware',
+    'security.middleware.HSTSMiddleware',
 ]
 
 ROOT_URLCONF = 'cybersecurity_backend.urls'
@@ -113,6 +115,16 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
+    {
+        'NAME': 'security.validators.StrongPasswordValidator',
+        'OPTIONS': {
+            'min_length': 12,
+            'require_uppercase': True,
+            'require_lowercase': True,
+            'require_digit': True,
+            'require_special': True,
+        }
+    },
 ]
 
 
@@ -135,14 +147,35 @@ AUTH_USER_MODEL = 'users.User'
 
 STATIC_URL = 'static/'
 
-# CORS settings
+# CORS settings - strict security
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-tenant-id',
+]
+CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+CORS_PREFLIGHT_MAX_AGE = 3600
+CORS_EXPOSE_HEADERS = ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']
+
+# Disallow localhost in production
+if not DEBUG:
+    CORS_ALLOWED_ORIGINS = [origin for origin in CORS_ALLOWED_ORIGINS if 'localhost' not in origin]
 
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'security.cookie_auth.CookieJWTAuthentication',
+        'security.advanced_auth.APIKeyAuthentication',
+        'security.advanced_auth.SignedRequestAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -150,9 +183,10 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'security.exceptions.custom_exception_handler',
 }
 
-# JWT Settings
+# JWT Settings - Enhanced Security with httpOnly Cookies
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
@@ -162,7 +196,37 @@ SIMPLE_JWT = {
     'SIGNING_KEY': SECRET_KEY,
     'AUTH_HEADER_TYPES': ('Bearer',),
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_OBTAIN_SERIALIZER': 'users.serializers.TokenObtainPairSerializer',
+    'TOKEN_REFRESH_SERIALIZER': 'users.serializers.TokenRefreshSerializer',
+    # Cookie settings - httpOnly for security
+    'ACCESS_TOKEN_NAME': 'access_token',
+    'REFRESH_TOKEN_NAME': 'refresh_token',
+    'ACCESS_COOKIE': 'access_token',
+    'REFRESH_COOKIE': 'refresh_token',
+    'ACCESS_COOKIE_HTTPONLY': True,
+    'REFRESH_COOKIE_HTTPONLY': True,
+    'ACCESS_COOKIE_SECURE': not DEBUG,
+    'REFRESH_COOKIE_SECURE': not DEBUG,
+    'ACCESS_COOKIE_SAMESITE': 'Lax',
+    'REFRESH_COOKIE_SAMESITE': 'Lax',
+    'ACCESS_COOKIE_PATH': '/',
+    'REFRESH_COOKIE_PATH': '/',
+    'AUTH_COOKIE_DOMAIN': None,
+    'TOKEN_OBTAIN_SERIALIZER': 'users.serializers.TokenObtainPairSerializer',
+    'TOKEN_REFRESH_SERIALIZER': 'users.serializers.TokenRefreshSerializer',
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# CSRF Settings
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_USE_SESSIONS = True
+
+# API Key Configuration
+API_KEY_RATE_LIMIT = 1000  # requests per hour
+API_KEY_SIGNATURE_EXPIRY = 300  # 5 minutes
 
 # Django Channels Configuration
 CHANNEL_LAYERS = {
@@ -174,24 +238,74 @@ CHANNEL_LAYERS = {
     }
 }
 
-# Rate Limiting Settings
+# Rate Limiting Settings - Stricter for security
 REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = [
     'rest_framework.throttling.AnonRateThrottle',
-    'rest_framework.throttling.UserRateThrottle'
+    'rest_framework.throttling.UserRateThrottle',
 ]
 REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
-    'anon': '100/hour',
-    'user': '1000/hour',
+    'anon': '60/minute',
+    'user': '300/minute',
     'login': '5/minute',
+    'password_reset': '3/minute',
+    'register': '3/minute',
 }
 
 # Drf Spectacular Settings
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Cybersecurity SaaS API v1',
-    'DESCRIPTION': 'Enterprise Cybersecurity SaaS Platform API v1',
+    'DESCRIPTION': '''Enterprise Cybersecurity SaaS Platform API v1
+
+## Authentication
+
+This API supports multiple authentication methods:
+
+### JWT Authentication
+- Obtain tokens via `/api/v1/users/login/`
+- Use `Authorization: Bearer <access_token>` header
+
+### API Key Authentication
+- Create API keys from the dashboard
+- Use `X-Api-Key: <prefix> <key>` header
+
+### Signed Request Authentication
+- For server-to-server communication
+- Headers required:
+  - `X-Api-Key-Id`: Your API key ID
+  - `X-Request-Timestamp`: Unix timestamp
+  - `X-Request-Signature`: HMAC-SHA256 signature
+''',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
+    'TAGS': [
+        {'name': 'Users', 'description': 'User authentication and management'},
+        {'name': 'Breaches', 'description': 'Breach detection and monitoring'},
+        {'name': 'Cloud Audits', 'description': 'Cloud infrastructure security audits'},
+        {'name': 'SOAR', 'description': 'Security Orchestration, Automation and Response'},
+        {'name': 'ZTNA', 'description': 'Zero Trust Network Access'},
+    ],
+    'APPEND_COMPONENTS': {
+        'securitySchemes': {
+            'Bearer': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'description': 'JWT access token from /api/v1/users/login/',
+            },
+            'ApiKey': {
+                'type': 'apiKey',
+                'in': 'header',
+                'name': 'X-Api-Key',
+                'description': 'API Key in format: "prefix key" (e.g., "sk_testk abc123...")',
+            },
+            'SignedRequest': {
+                'type': 'apiKey',
+                'in': 'header',
+                'name': 'X-Request-Signature',
+                'description': 'HMAC-SHA256 signed request for server-to-server',
+            },
+        },
+    },
 }
 
 # CSRF Settings
@@ -214,6 +328,27 @@ SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
 
+# Additional Security Headers
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# Content Security Policy
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-inline'")
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'")
+CSP_IMG_SRC = ("'self'", 'data:', 'https:')
+CSP_CONNECT_SRC = ("'self'",)
+CSP_FONT_SRC = ("'self'",)
+CSP_OBJECT_SRC = ("'none'",)
+CSP_BASE_URI = ("'self'",)
+CSP_FRAME_ANCESTORS = ("'none'",)
+
+# File Upload Security
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+FILE_UPLOAD_PERMISSIONS = 0o644
+
 # Email Settings
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
@@ -227,4 +362,67 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@cybershield.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
 # Data Encryption Settings
-DATA_ENCRYPTION_KEY = os.getenv('DATA_ENCRYPTION_KEY', None)
+DATA_ENCRYPTION_KEY = os.getenv('DATA_ENCRYPTION_KEY')
+if not DATA_ENCRYPTION_KEY:
+    raise ValueError("DATA_ENCRYPTION_KEY environment variable is required")
+
+# API Request Signing Key (for replay attack prevention)
+API_SIGNING_KEY = os.getenv('API_SIGNING_KEY', os.getenv('DJANGO_SECRET_KEY', ''))
+if not API_SIGNING_KEY:
+    import secrets
+    API_SIGNING_KEY = secrets.token_hex(32)
+
+# JWT Settings - Improved Security
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_CLAIM_CLASSES': {
+        'access': 'rest_framework_simplejwt.tokens.AccessToken',
+    },
+    'JTI_CLAIM': 'jti',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
+
+# Security Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'security': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
+
+# Cache configuration for rate limiting
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    }
+}

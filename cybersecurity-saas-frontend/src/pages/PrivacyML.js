@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import api from "../services/axios";
 import { logoutUser } from "../store/authActions";
+import { useToast } from "../components/Toast";
+import { escapeHtml, sanitizeInput } from "../utils";
 
 function PrivacyML() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState("models");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -13,7 +16,8 @@ function PrivacyML() {
   const [trainingJobs, setTrainingJobs] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [showCreateJob, setShowCreateJob] = useState(false);
-  const [newJob, setNewJob] = useState({ model_name: "", dataset: "", rounds: 10 });
+  const [newJob, setNewJob] = useState({ name: "", algorithm: "differential_privacy", privacy_budget: 1.0 });
+  const startJobInProgress = useRef(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -39,22 +43,36 @@ function PrivacyML() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
 
   const startTrainingJob = async (e) => {
     e.preventDefault();
+    if (startJobInProgress.current) return;
+    startJobInProgress.current = true;
+    const sanitizedJob = {
+      name: sanitizeInput(newJob.name),
+      algorithm: newJob.algorithm,
+      privacy_budget: Math.max(0.1, Math.min(10, parseFloat(newJob.privacy_budget) || 1.0))
+    };
     try {
-      await api.post("/privacy-ml/training-jobs/", newJob);
+      await api.post("/privacy-ml/training-jobs/", sanitizedJob);
       setShowCreateJob(false);
-      setNewJob({ model_name: "", dataset: "", rounds: 10 });
+      setNewJob({ name: "", algorithm: "differential_privacy", privacy_budget: 1.0 });
       fetchData();
+      toast.success("Training job started successfully");
     } catch (err) {
       setError("Failed to start training job");
+      toast.error("Failed to start training job");
+    } finally {
+      startJobInProgress.current = false;
     }
   };
 
@@ -151,11 +169,11 @@ function PrivacyML() {
                       {models.map((model) => (
                         <div key={model.id} className="incident-card">
                           <div className="incident-card-header">
-                            <h3>{model.name}</h3>
+                            <h3 title={escapeHtml(model.name)}>{escapeHtml(model.name)}</h3>
                             {getStatusBadge(model.status)}
                           </div>
                           <div className="incident-card-body">
-                            <p>Algorithm: {model.algorithm}</p>
+                            <p>Algorithm: {escapeHtml(model.algorithm)}</p>
                             <p>Participants: {model.participant_count || 0}</p>
                             <p>Accuracy: {model.accuracy ? `${model.accuracy.toFixed(2)}%` : "N/A"}</p>
                             <p>Created: {model.created_at ? new Date(model.created_at).toLocaleDateString() : "N/A"}</p>
@@ -188,8 +206,7 @@ function PrivacyML() {
                         <thead>
                           <tr>
                             <th>Job ID</th>
-                            <th>Model</th>
-                            <th>Dataset</th>
+                            <th>Model ID</th>
                             <th>Rounds</th>
                             <th>Status</th>
                             <th>Started</th>
@@ -199,9 +216,8 @@ function PrivacyML() {
                         <tbody>
                           {trainingJobs.map((job) => (
                             <tr key={job.id}>
-                              <td>{job.id.substring(0, 8)}...</td>
-                              <td>{job.model_name}</td>
-                              <td>{job.dataset}</td>
+                              <td>{job.id}</td>
+                              <td>{escapeHtml(job.model)}</td>
                               <td>{job.rounds}</td>
                               <td>{getStatusBadge(job.status)}</td>
                               <td>{job.started_at ? new Date(job.started_at).toLocaleString() : "-"}</td>
@@ -234,11 +250,11 @@ function PrivacyML() {
                       {participants.map((participant) => (
                         <div key={participant.id} className="incident-card">
                           <div className="incident-card-header">
-                            <h3>{participant.name}</h3>
+                            <h3 title={escapeHtml(participant.name)}>{escapeHtml(participant.name)}</h3>
                             {getStatusBadge(participant.status)}
                           </div>
                           <div className="incident-card-body">
-                            <p>ID: {participant.participant_id}</p>
+                            <p>ID: {escapeHtml(participant.participant_id)}</p>
                             <p>Data Samples: {participant.data_samples || 0}</p>
                             <p>Contributions: {participant.contributions || 0}</p>
                             <p>Joined: {participant.joined_at ? new Date(participant.joined_at).toLocaleDateString() : "N/A"}</p>
@@ -262,15 +278,19 @@ function PrivacyML() {
                 <form onSubmit={startTrainingJob}>
                   <div className="form-group">
                     <label>Model Name</label>
-                    <input type="text" value={newJob.model_name} onChange={(e) => setNewJob({ ...newJob, model_name: e.target.value })} required />
+                    <input type="text" value={newJob.name} onChange={(e) => setNewJob({ ...newJob, name: e.target.value })} required />
                   </div>
                   <div className="form-group">
-                    <label>Dataset</label>
-                    <input type="text" value={newJob.dataset} onChange={(e) => setNewJob({ ...newJob, dataset: e.target.value })} required />
+                    <label>Algorithm</label>
+                    <select value={newJob.algorithm} onChange={(e) => setNewJob({ ...newJob, algorithm: e.target.value })}>
+                      <option value="differential_privacy">Differential Privacy</option>
+                      <option value="federated_learning">Federated Learning</option>
+                      <option value="secure_aggregation">Secure Aggregation</option>
+                    </select>
                   </div>
                   <div className="form-group">
-                    <label>Number of Rounds</label>
-                    <input type="number" value={newJob.rounds} onChange={(e) => setNewJob({ ...newJob, rounds: parseInt(e.target.value) })} required />
+                    <label>Privacy Budget (epsilon)</label>
+                    <input type="number" step="0.1" min="0.1" max="10" value={newJob.privacy_budget} onChange={(e) => setNewJob({ ...newJob, privacy_budget: parseFloat(e.target.value) })} required />
                   </div>
                   <button type="submit" className="btn btn-primary">Start Training</button>
                 </form>

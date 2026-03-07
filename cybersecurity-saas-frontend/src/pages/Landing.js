@@ -148,7 +148,7 @@ function Landing() {
       <Header />
 
       {/* Hero Section */}
-      <section className="hero">
+      <section className="hero" id="main-content" tabIndex="-1">
         <div className="hero-bg">
           <div className="hero-grid"></div>
           <div className="hero-glow"></div>

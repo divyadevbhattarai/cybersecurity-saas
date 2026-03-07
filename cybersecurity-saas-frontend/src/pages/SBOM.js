@@ -37,9 +37,12 @@ function SBOM() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };

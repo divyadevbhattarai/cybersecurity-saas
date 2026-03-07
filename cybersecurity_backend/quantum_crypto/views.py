@@ -20,6 +20,10 @@ class EncryptionKeyViewSet(TenantAwareModelViewSet):
     permission_classes = (TenantPermission,)
     queryset = EncryptionKey.objects.select_related('tenant').all()
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        return queryset.filter(tenant=TenantContext.get_tenant())
+
     def get_serializer_class(self):
         if self.action == 'create':
             return EncryptionKeyCreateSerializer

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { useDispatch } from "react-redux";
+import { Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { logoutUser } from "../store/authActions";
+import api from "../services/axios";
 
 function SecurityTraining() {
   const [activeModule, setActiveModule] = useState(null);
@@ -9,6 +10,8 @@ function SecurityTraining() {
   const [activeTab, setActiveTab] = useState("training");
   const [completedModules, setCompletedModules] = useState([1, 2]);
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const user = useSelector((state) => state.auth.user);
 
   const modules = [
     {
@@ -103,11 +106,14 @@ function SecurityTraining() {
     },
   ];
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
-    window.location.href = "/";
+    navigate("/");
   };
 
   const toggleModule = (id) => {
@@ -172,10 +178,10 @@ function SecurityTraining() {
         </nav>
         <div className="sidebar-footer">
           <div className="user-info">
-            <div className="user-avatar">U</div>
+            <div className="user-avatar">{user?.username?.charAt(0).toUpperCase() || "U"}</div>
             <div className="user-details">
-              <span className="user-name">User</span>
-              <span className="user-role">Administrator</span>
+              <span className="user-name">{user?.username || "User"}</span>
+              <span className="user-role">{user?.role || "User"}</span>
             </div>
           </div>
           <button className="logout-btn" onClick={handleLogout}>

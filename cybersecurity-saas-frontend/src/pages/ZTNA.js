@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import api from "../services/axios";
 import { logoutUser } from "../store/authActions";
+import { useToast } from "../components/Toast";
+import { escapeHtml, sanitizeInput } from "../utils";
 
 function ZTNA() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState("biometric");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -15,8 +18,11 @@ function ZTNA() {
   const [accessRequests, setAccessRequests] = useState([]);
   const [showAddProfile, setShowAddProfile] = useState(false);
   const [showAddRequest, setShowAddRequest] = useState(false);
-  const [newProfile, setNewProfile] = useState({ name: "", biometric_type: "fingerprint" });
-  const [newRequest, setNewRequest] = useState({ resource: "", duration: 60 });
+  const [newProfile, setNewProfile] = useState({ device_id: "", device_type: "laptop" });
+  const [newRequest, setNewRequest] = useState({ resource: "", access_level: "medium", reason: "" });
+  const verifyInProgress = useRef(false);
+  const addProfileInProgress = useRef(false);
+  const addRequestInProgress = useRef(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -43,9 +49,12 @@ function ZTNA() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
@@ -64,38 +73,63 @@ function ZTNA() {
   };
 
   const verifyBiometric = async (profileId) => {
+    if (verifyInProgress.current) return;
+    verifyInProgress.current = true;
     try {
       setLoading(true);
       await api.post(`/ztna/biometrics/${profileId}/verify/`);
       fetchData();
     } catch (err) {
       console.error("Verification failed", err);
+      toast.error("Failed to verify biometric profile");
     } finally {
       setLoading(false);
+      verifyInProgress.current = false;
     }
   };
 
   const addBiometricProfile = async (e) => {
     e.preventDefault();
+    if (addProfileInProgress.current) return;
+    addProfileInProgress.current = true;
+    const sanitizedProfile = {
+      device_id: sanitizeInput(newProfile.device_id),
+      device_type: newProfile.device_type
+    };
     try {
-      await api.post("/ztna/biometrics/", newProfile);
+      await api.post("/ztna/biometrics/", sanitizedProfile);
       setShowAddProfile(false);
-      setNewProfile({ name: "", biometric_type: "fingerprint" });
+      setNewProfile({ device_id: "", device_type: "laptop" });
       fetchData();
+      toast.success("Biometric profile added successfully");
     } catch (err) {
       setError("Failed to add profile");
+      toast.error("Failed to add biometric profile");
+    } finally {
+      addProfileInProgress.current = false;
     }
   };
 
   const createAccessRequest = async (e) => {
     e.preventDefault();
+    if (addRequestInProgress.current) return;
+    addRequestInProgress.current = false;
+    const sanitizedRequest = {
+      resource: sanitizeInput(newRequest.resource),
+      access_level: newRequest.access_level,
+      reason: sanitizeInput(newRequest.reason)
+    };
     try {
-      await api.post("/ztna/access-requests/", newRequest);
+      await api.post("/ztna/access-requests/", sanitizedRequest);
       setShowAddRequest(false);
-      setNewRequest({ resource: "", duration: 60 });
+      setNewRequest({ resource: "", access_level: "medium", reason: "" });
       fetchData();
+      toast.success("Access request created successfully");
     } catch (err) {
       setError("Failed to create request");
+      toast.error("Failed to create access request");
+    } finally {
+      addRequestInProgress.current = false;
     }
   };
 
@@ -191,14 +225,14 @@ function ZTNA() {
                       {biometricProfiles.map((profile) => (
                         <div key={profile.id} className="incident-card">
                           <div className="incident-card-header">
-                            <h3>{profile.name}</h3>
-                            <span className={`badge ${profile.verified ? "badge-success" : "badge-warning"}`}>
-                              {profile.verified ? "Verified" : "Pending"}
+                            <h3 title={escapeHtml(profile.device_id)}>{escapeHtml(profile.device_id)}</h3>
+                            <span className={`badge ${profile.is_verified ? "badge-success" : "badge-warning"}`}>
+                              {profile.is_verified ? "Verified" : "Pending"}
                             </span>
                           </div>
                           <div className="incident-card-body">
-                            <p>Type: {profile.biometric_type}</p>
-                            <p>Trust Score: {profile.trust_score || 0}</p>
+                            <p>Type: {escapeHtml(profile.device_type)}</p>
+                            <p>Trust Score: {profile.behavioral_score || 0}</p>
                             <button className="btn btn-sm btn-primary" onClick={() => verifyBiometric(profile.id)} disabled={loading}>
                               Verify
                             </button>
@@ -224,7 +258,7 @@ function ZTNA() {
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                       <div>
                         <h4>Wallet Connected</h4>
-                        <p>{web3Identity.address}</p>
+                        <p title={escapeHtml(web3Identity.address)}>{escapeHtml(web3Identity.address)}</p>
                       </div>
                     </div>
                   ) : (
@@ -258,7 +292,7 @@ function ZTNA() {
                         return (
                           <div key={profile.id} className="incident-card">
                             <div className="incident-card-header">
-                              <h3>{profile.name}</h3>
+                              <h3 title={escapeHtml(profile.name)}>{escapeHtml(profile.name)}</h3>
                               <span className="incident-status" style={{ background: colors.bg, color: colors.text }}>
                                 Score: {profile.trust_score || 0}
                               </span>
@@ -295,13 +329,13 @@ function ZTNA() {
                       {accessRequests.map((request) => (
                         <div key={request.id} className="incident-card">
                           <div className="incident-card-header">
-                            <h3>{request.resource}</h3>
+                            <h3 title={escapeHtml(request.resource)}>{escapeHtml(request.resource)}</h3>
                             <span className={`badge badge-${request.status === "approved" ? "success" : request.status === "pending" ? "warning" : "danger"}`}>
-                              {request.status}
+                              {escapeHtml(request.status)}
                             </span>
                           </div>
                           <div className="incident-card-body">
-                            <p>Duration: {request.duration} minutes</p>
+                            <p>Access Level: {escapeHtml(request.access_level)}</p>
                             <p>Requested: {request.created_at ? new Date(request.created_at).toLocaleDateString() : "N/A"}</p>
                           </div>
                         </div>
@@ -322,16 +356,16 @@ function ZTNA() {
                 </div>
                 <form onSubmit={addBiometricProfile}>
                   <div className="form-group">
-                    <label>Name</label>
-                    <input type="text" value={newProfile.name} onChange={(e) => setNewProfile({ ...newProfile, name: e.target.value })} required />
+                    <label>Device ID</label>
+                    <input type="text" value={newProfile.device_id} onChange={(e) => setNewProfile({ ...newProfile, device_id: e.target.value })} required />
                   </div>
                   <div className="form-group">
-                    <label>Biometric Type</label>
-                    <select value={newProfile.biometric_type} onChange={(e) => setNewProfile({ ...newProfile, biometric_type: e.target.value })}>
-                      <option value="fingerprint">Fingerprint</option>
-                      <option value="face">Face Recognition</option>
-                      <option value="voice">Voice Recognition</option>
-                      <option value="iris">Iris Scan</option>
+                    <label>Device Type</label>
+                    <select value={newProfile.device_type} onChange={(e) => setNewProfile({ ...newProfile, device_type: e.target.value })}>
+                      <option value="laptop">Laptop</option>
+                      <option value="mobile">Mobile</option>
+                      <option value="tablet">Tablet</option>
+                      <option value="desktop">Desktop</option>
                     </select>
                   </div>
                   <button type="submit" className="btn btn-primary">Add Profile</button>
@@ -353,8 +387,17 @@ function ZTNA() {
                     <input type="text" value={newRequest.resource} onChange={(e) => setNewRequest({ ...newRequest, resource: e.target.value })} required />
                   </div>
                   <div className="form-group">
-                    <label>Duration (minutes)</label>
-                    <input type="number" value={newRequest.duration} onChange={(e) => setNewRequest({ ...newRequest, duration: parseInt(e.target.value) })} required />
+                    <label>Access Level</label>
+                    <select value={newRequest.access_level} onChange={(e) => setNewRequest({ ...newRequest, access_level: e.target.value })}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Reason</label>
+                    <input type="text" value={newRequest.reason} onChange={(e) => setNewRequest({ ...newRequest, reason: e.target.value })} />
                   </div>
                   <button type="submit" className="btn btn-primary">Submit Request</button>
                 </form>

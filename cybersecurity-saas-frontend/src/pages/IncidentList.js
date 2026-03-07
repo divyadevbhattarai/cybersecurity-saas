@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useDispatch } from "react-redux";
+import { Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import api from "../services/axios";
 import { logoutUser } from "../store/authActions";
 
@@ -11,6 +11,8 @@ function IncidentList() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("incidents");
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const user = useSelector((state) => state.auth.user);
 
   useEffect(() => {
     fetchIncidents();
@@ -20,7 +22,7 @@ function IncidentList() {
     try {
       setLoading(true);
       const response = await api.get("/breaches/");
-      setIncidents(response.data);
+      setIncidents(response.data.results || response.data);
     } catch (error) {
       console.error("Error fetching incidents", error);
     } finally {
@@ -28,11 +30,14 @@ function IncidentList() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
-    window.location.href = "/";
+    navigate("/");
   };
 
   const getStatusBadge = (status) => {
@@ -102,10 +107,10 @@ function IncidentList() {
         </nav>
         <div className="sidebar-footer">
           <div className="user-info">
-            <div className="user-avatar">U</div>
+            <div className="user-avatar">{user?.username?.charAt(0).toUpperCase() || "U"}</div>
             <div className="user-details">
-              <span className="user-name">User</span>
-              <span className="user-role">Administrator</span>
+              <span className="user-name">{user?.username || "User"}</span>
+              <span className="user-role">{user?.role || "User"}</span>
             </div>
           </div>
           <button className="logout-btn" onClick={handleLogout}>

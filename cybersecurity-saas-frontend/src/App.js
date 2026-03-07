@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { ThemeProvider } from "./context/ThemeContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import CookieConsent from "./components/CookieConsent";
+import { ToastProvider } from "./components/Toast";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -40,15 +41,18 @@ import PricingPage from "./pages/PricingPage";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import NotFound from "./pages/NotFound";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
-// PrivateRoute component to protect routes
+const hasAuthCookie = () => {
+  return document.cookie.split(';').some(c => c.trim().startsWith('access_token='));
+};
+
 const PrivateRoute = ({ children }) => {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
+  const cookieToken = hasAuthCookie();
 
-  // Check localStorage as backup
-  const token = localStorage.getItem("access_token");
-
-  if (!isAuthenticated && !token) {
+  if (!isAuthenticated && !cookieToken) {
     return <Navigate to="/login" replace />;
   }
 
@@ -57,19 +61,38 @@ const PrivateRoute = ({ children }) => {
 
 function App() {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
-  const token = localStorage.getItem("access_token");
-  const isLoggedIn = isAuthenticated || token;
+  const cookieToken = hasAuthCookie();
+  const isLoggedIn = isAuthenticated || cookieToken;
+
+  const handleSkipToContent = (e) => {
+    e.preventDefault();
+    const main = document.getElementById('main-content');
+    if (main) {
+      main.focus();
+      main.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
     <ThemeProvider>
+      <ToastProvider>
       <div className="App">
         <ErrorBoundary>
+          <a 
+            href="#main-content" 
+            className="skip-to-content"
+            onClick={handleSkipToContent}
+          >
+            Skip to main content
+          </a>
           <CookieConsent />
           <Routes>
           <Route path="/" element={isLoggedIn ? <Navigate to="/dashboard" /> : <Landing />} />
           <Route path="/landing" element={isLoggedIn ? <Navigate to="/dashboard" /> : <Landing />} />
           <Route path="/login" element={isLoggedIn ? <Navigate to="/dashboard" /> : <Login />} />
           <Route path="/register" element={isLoggedIn ? <Navigate to="/dashboard" /> : <Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route
             path="/dashboard"
             element={
@@ -197,6 +220,7 @@ function App() {
         </Routes>
         </ErrorBoundary>
       </div>
+      </ToastProvider>
     </ThemeProvider>
   );
 }
