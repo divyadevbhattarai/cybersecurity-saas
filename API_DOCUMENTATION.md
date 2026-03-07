@@ -73,6 +73,9 @@ Authorization: Bearer YOUR_ACCESS_TOKEN
 | POST | `/users/logout/` | User logout |
 | GET | `/users/me/` | Get current user |
 | PUT/PATCH | `/users/me/` | Update current user |
+| POST | `/users/password-reset/` | Request password reset |
+| POST | `/users/password-reset/confirm/` | Confirm password reset with token |
+| POST | `/users/set-password/` | Set password (authenticated) |
 
 ### Breaches
 | Method | Endpoint | Description |

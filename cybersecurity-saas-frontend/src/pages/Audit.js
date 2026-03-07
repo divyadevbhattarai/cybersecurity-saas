@@ -7,7 +7,6 @@ import { logoutUser } from "../store/authActions";
 function Audit() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [auditLogs, setAuditLogs] = useState([]);
   const [filters, setFilters] = useState({ user: "", action: "", date: "" });
   const [searchQuery, setSearchQuery] = useState("");
@@ -16,6 +15,7 @@ function Audit() {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
   const fetchData = async () => {
@@ -34,9 +34,12 @@ function Audit() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
@@ -64,10 +67,6 @@ function Audit() {
     }
     return true;
   });
-
-  const menuItems = [
-    { id: "logs", label: "Audit Logs", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
-  ];
 
   if (loading && auditLogs.length === 0) {
     return (
@@ -121,8 +120,6 @@ function Audit() {
         </header>
 
         <div className="dashboard-content">
-          {error && <div className="alert alert-error">{error}</div>}
-
           <div className="card full-width">
             <div className="card-header">
               <h3>Searchable Audit Log</h3>

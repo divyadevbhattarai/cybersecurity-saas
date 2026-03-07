@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import api from "../services/axios";
 import { logoutUser } from "../store/authActions";
+import { useToast } from "../components/Toast";
+import { escapeHtml, sanitizeInput, sanitizeUrl } from "../utils";
 
 function SOAR() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState("playbooks");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -17,6 +20,10 @@ function SOAR() {
   const [showCreateWebhook, setShowCreateWebhook] = useState(false);
   const [newPlaybook, setNewPlaybook] = useState({ name: "", description: "", trigger: "manual" });
   const [newWebhook, setNewWebhook] = useState({ name: "", url: "", events: "" });
+  const runPlaybookInProgress = useRef(false);
+  const toggleAgentInProgress = useRef(false);
+  const createPlaybookInProgress = useRef(false);
+  const createWebhookInProgress = useRef(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -44,59 +51,100 @@ function SOAR() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
 
   const runPlaybook = async (playbookId) => {
+    if (runPlaybookInProgress.current) return;
+    runPlaybookInProgress.current = true;
     try {
       setLoading(true);
       await api.post(`/soar/playbooks/${playbookId}/run/`);
       fetchData();
+      toast.success("Playbook execution started");
     } catch (err) {
       console.error("Error running playbook", err);
+      toast.error("Failed to run playbook");
     } finally {
       setLoading(false);
+      runPlaybookInProgress.current = false;
     }
   };
 
   const toggleAgent = async (agentId, currentStatus) => {
+    if (toggleAgentInProgress.current) return;
+    toggleAgentInProgress.current = true;
     try {
       setLoading(true);
       const action = currentStatus === "running" ? "stop" : "start";
       await api.post(`/soar/agents/${agentId}/${action}/`);
       fetchData();
+      toast.success(`Agent ${action === 'start' ? 'started' : 'stopped'} successfully`);
     } catch (err) {
       console.error("Error toggling agent", err);
+      toast.error("Failed to toggle agent");
     } finally {
       setLoading(false);
+      toggleAgentInProgress.current = false;
     }
   };
 
   const createPlaybook = async (e) => {
     e.preventDefault();
+    if (createPlaybookInProgress.current) return;
+    createPlaybookInProgress.current = true;
+    const sanitizedPlaybook = {
+      name: sanitizeInput(newPlaybook.name),
+      description: sanitizeInput(newPlaybook.description),
+      trigger: newPlaybook.trigger
+    };
     try {
-      await api.post("/soar/playbooks/", newPlaybook);
+      await api.post("/soar/playbooks/", sanitizedPlaybook);
       setShowCreatePlaybook(false);
       setNewPlaybook({ name: "", description: "", trigger: "manual" });
       fetchData();
+      toast.success("Playbook created successfully");
     } catch (err) {
       setError("Failed to create playbook");
+      toast.error("Failed to create playbook");
+    } finally {
+      createPlaybookInProgress.current = false;
     }
   };
 
   const createWebhook = async (e) => {
     e.preventDefault();
+    if (createWebhookInProgress.current) return;
+    createWebhookInProgress.current = true;
+    const sanitizedUrl = sanitizeUrl(newWebhook.url);
+    if (!sanitizedUrl) {
+      toast.error("Invalid URL format");
+      createWebhookInProgress.current = false;
+      return;
+    }
+    const sanitizedWebhook = {
+      name: sanitizeInput(newWebhook.name),
+      url: sanitizedUrl,
+      events: sanitizeInput(newWebhook.events)
+    };
     try {
-      await api.post("/soar/webhooks/", newWebhook);
+      await api.post("/soar/webhooks/", sanitizedWebhook);
       setShowCreateWebhook(false);
       setNewWebhook({ name: "", url: "", events: "" });
       fetchData();
+      toast.success("Webhook created successfully");
     } catch (err) {
       setError("Failed to create webhook");
+      toast.error("Failed to create webhook");
+    } finally {
+      createWebhookInProgress.current = false;
     }
   };
 
@@ -205,9 +253,9 @@ function SOAR() {
                         <tbody>
                           {playbooks.map((playbook) => (
                             <tr key={playbook.id}>
-                              <td>{playbook.name}</td>
-                              <td>{playbook.description}</td>
-                              <td>{playbook.trigger}</td>
+                              <td title={escapeHtml(playbook.name)}>{escapeHtml(playbook.name)}</td>
+                              <td title={escapeHtml(playbook.description)}>{escapeHtml(playbook.description)}</td>
+                              <td>{escapeHtml(playbook.trigger_type)}</td>
                               <td>{getStatusBadge(playbook.status)}</td>
                               <td>
                                 <button className="btn btn-sm btn-primary" onClick={() => runPlaybook(playbook.id)} disabled={loading}>
@@ -242,11 +290,11 @@ function SOAR() {
                       {agents.map((agent) => (
                         <div key={agent.id} className="incident-card">
                           <div className="incident-card-header">
-                            <h3>{agent.name}</h3>
+                            <h3 title={escapeHtml(agent.name)}>{escapeHtml(agent.name)}</h3>
                             {getStatusBadge(agent.status)}
                           </div>
                           <div className="incident-card-body">
-                            <p>Type: {agent.agent_type}</p>
+                            <p>Type: {escapeHtml(agent.agent_type)}</p>
                             <p>Last Run: {agent.last_run ? new Date(agent.last_run).toLocaleDateString() : "Never"}</p>
                             <button className={`btn btn-sm ${agent.status === "running" ? "btn-danger" : "btn-success"}`} onClick={() => toggleAgent(agent.id, agent.status)} disabled={loading}>
                               {agent.status === "running" ? "Stop" : "Start"}
@@ -288,8 +336,8 @@ function SOAR() {
                         <tbody>
                           {history.map((exec) => (
                             <tr key={exec.id}>
-                              <td>{exec.playbook_name}</td>
-                              <td>{exec.executed_by}</td>
+                              <td title={escapeHtml(exec.playbook_name)}>{escapeHtml(exec.playbook_name)}</td>
+                              <td title={escapeHtml(exec.executed_by)}>{escapeHtml(exec.executed_by)}</td>
                               <td>{getStatusBadge(exec.status)}</td>
                               <td>{exec.started_at ? new Date(exec.started_at).toLocaleString() : "-"}</td>
                               <td>{exec.completed_at ? new Date(exec.completed_at).toLocaleString() : "-"}</td>
@@ -322,12 +370,12 @@ function SOAR() {
                       {webhooks.map((webhook) => (
                         <div key={webhook.id} className="incident-card">
                           <div className="incident-card-header">
-                            <h3>{webhook.name}</h3>
+                            <h3 title={escapeHtml(webhook.name)}>{escapeHtml(webhook.name)}</h3>
                             {getStatusBadge(webhook.active ? "active" : "inactive")}
                           </div>
                           <div className="incident-card-body">
-                            <p>URL: {webhook.url}</p>
-                            <p>Events: {webhook.events}</p>
+                            <p>URL: <span title={escapeHtml(webhook.url)}>{escapeHtml(webhook.url)}</span></p>
+                            <p>Events: {escapeHtml(webhook.events)}</p>
                           </div>
                         </div>
                       ))}

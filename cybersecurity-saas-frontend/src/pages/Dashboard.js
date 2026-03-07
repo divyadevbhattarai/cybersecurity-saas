@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import api from "../services/axios";
 import WebSocketComponent from "../components/WebSocketComponent";
 import { logoutUser } from "../store/authActions";
+import { StatsCard, ThreatLevelIndicator } from "../components/StatsComponents";
+import { SkeletonStats } from "../components/Skeleton";
+import { escapeHtml } from "../utils";
 
 function Dashboard() {
   const [breaches, setBreaches] = useState([]);
@@ -15,19 +18,22 @@ function Dashboard() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const auditInProgress = useRef(false);
+  const threatInProgress = useRef(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
 
   useEffect(() => {
     fetchData();
+    return () => {};
   }, []);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const [breachesRes] = await Promise.all([api.get("/breaches/")]);
-      setBreaches(breachesRes.data);
+      setBreaches(breachesRes.data.results || breachesRes.data);
     } catch (err) {
       setError("Failed to load data. Please try again later.");
     } finally {
@@ -36,7 +42,10 @@ function Dashboard() {
   };
 
   const runCloudAudit = async () => {
+    if (auditInProgress.current) return;
+    auditInProgress.current = true;
     setAuditLoading(true);
+    setError(null);
     try {
       const response = await api.get("/cloud-audits/audit/");
       setAuditResults(response.data);
@@ -44,25 +53,32 @@ function Dashboard() {
       setError("Failed to run cloud audit. Please try again.");
     } finally {
       setAuditLoading(false);
+      auditInProgress.current = false;
     }
   };
 
   const runThreatDetection = async () => {
+    if (threatInProgress.current) return;
+    threatInProgress.current = true;
     setThreatLoading(true);
+    setError(null);
     try {
-      const response = await api.get("/ml-model/threat-detection/");
+      const response = await api.get("/ml/threat-detection/");
       setAnomalies(response.data.anomalies || []);
     } catch (err) {
       setError("Failed to run threat detection. Please try again.");
     } finally {
       setThreatLoading(false);
+      threatInProgress.current = false;
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("token_expiry");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
@@ -168,7 +184,7 @@ function Dashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="dashboard-main">
+      <main className="dashboard-main" id="main-content" tabIndex="-1">
         <header className="dashboard-header">
           <div className="header-left">
             <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
@@ -182,6 +198,7 @@ function Dashboard() {
             </div>
           </div>
           <div className="header-right">
+            <ThreatLevelIndicator level={stats.openBreaches > 3 ? 'high' : stats.openBreaches > 0 ? 'medium' : 'low'} />
             <div className="status-indicator online">
               <span className="status-dot"></span>
               System Online
@@ -195,111 +212,103 @@ function Dashboard() {
           {/* Overview Tab */}
           {activeTab === "overview" && (
             <div className="tab-panel">
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-icon" style={{ background: "#eef2ff" }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2">
-                      <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
+              {loading ? (
+                <SkeletonStats />
+              ) : (
+                <>
+                  <div className="stats-grid">
+                    <StatsCard 
+                      title="Total Incidents" 
+                      value={stats.totalBreaches} 
+                      icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      color="#dc2626"
+                      trend="down"
+                      trendValue="12% vs last month"
+                    />
+                    <StatsCard 
+                      title="Open Issues" 
+                      value={stats.openBreaches} 
+                      icon="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      color="#f59e0b"
+                      trend="up"
+                      trendValue="3 new this week"
+                    />
+                    <StatsCard 
+                      title="Resolved" 
+                      value={stats.closedBreaches} 
+                      icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      color="#10b981"
+                      trend="up"
+                      trendValue="85% resolution rate"
+                    />
+                    <StatsCard 
+                      title="Security Score" 
+                      value={stats.totalBreaches === 0 ? "A+" : "B"} 
+                      icon="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                      color="#6366f1"
+                    />
                   </div>
-                  <div className="stat-content">
-                    <h3>{stats.totalBreaches}</h3>
-                    <p>Total Incidents</p>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon" style={{ background: "#fef2f2" }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
-                      <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="stat-content">
-                    <h3>{stats.openBreaches}</h3>
-                    <p>Open Issues</p>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon" style={{ background: "#dcfce7" }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2">
-                      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="stat-content">
-                    <h3>{stats.closedBreaches}</h3>
-                    <p>Resolved</p>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon" style={{ background: "#fef3c7" }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
-                      <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                    </svg>
-                  </div>
-                  <div className="stat-content">
-                    <h3>{stats.totalBreaches > 0 ? Math.round((stats.closedBreaches / stats.totalBreaches) * 100) : 100}%</h3>
-                    <p>Resolution Rate</p>
-                  </div>
-                </div>
-              </div>
 
-              <div className="dashboard-grid">
-                <div className="card">
-                  <div className="card-header">
-                    <h3>Recent Incidents</h3>
-                    <Link to="/incidents" className="card-link">View All</Link>
-                  </div>
-                  <div className="card-body">
-                    {breaches.length === 0 ? (
-                      <div className="empty-state">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                          <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        <p>No incidents found</p>
-                        <span>Your system is secure</span>
+                  <div className="dashboard-grid">
+                    <div className="card">
+                      <div className="card-header">
+                        <h3>Recent Incidents</h3>
+                        <Link to="/incidents" className="card-link">View All</Link>
                       </div>
-                    ) : (
-                      <div className="incident-list">
-                        {breaches.slice(0, 5).map((breach) => {
-                          const colors = getStatusColor(breach.status);
-                          return (
-                            <div key={breach.id} className="incident-item">
-                              <div className="incident-info">
-                                <span className="incident-name">{breach.name}</span>
-                                <span className="incident-date">{new Date(breach.created_at || Date.now()).toLocaleDateString()}</span>
-                              </div>
-                              <span className="incident-status" style={{ background: colors.bg, color: colors.text }}>
-                                {breach.status}
-                              </span>
-                            </div>
-                          );
-                        })}
+                      <div className="card-body">
+                        {breaches.length === 0 ? (
+                          <div className="empty-state">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                              <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            <p>No incidents found</p>
+                            <span>Your system is secure</span>
+                          </div>
+                        ) : (
+                          <div className="incident-list">
+                            {breaches.slice(0, 5).map((breach) => {
+                              const colors = getStatusColor(breach.status);
+                              return (
+                                <div key={breach.id} className="incident-item">
+                                  <div className="incident-info">
+                                    <span className="incident-name" title={escapeHtml(breach.name)}>{escapeHtml(breach.name)}</span>
+                                    <span className="incident-date">{new Date(breach.created_at || Date.now()).toLocaleDateString()}</span>
+                                  </div>
+                                  <span className="incident-status" style={{ background: colors.bg, color: colors.text }}>
+                                    {escapeHtml(breach.status)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
 
-                <div className="card">
-                  <div className="card-header">
-                    <h3>Quick Actions</h3>
-                  </div>
-                  <div className="card-body">
-                    <div className="action-buttons">
-                      <button className="action-btn" onClick={runCloudAudit} disabled={auditLoading}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        {auditLoading ? "Running..." : "Run Cloud Audit"}
-                      </button>
-                      <button className="action-btn" onClick={runThreatDetection} disabled={threatLoading}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        {threatLoading ? "Analyzing..." : "Detect Threats"}
-                      </button>
+                    <div className="card">
+                      <div className="card-header">
+                        <h3>Quick Actions</h3>
+                      </div>
+                      <div className="card-body">
+                        <div className="action-buttons">
+                          <button className="action-btn" onClick={runCloudAudit} disabled={auditLoading}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            {auditLoading ? "Running..." : "Run Cloud Audit"}
+                          </button>
+                          <button className="action-btn" onClick={runThreatDetection} disabled={threatLoading}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            {threatLoading ? "Analyzing..." : "Detect Threats"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
+                </>
+              )}
             </div>
           )}
 
@@ -317,14 +326,14 @@ function Dashboard() {
                   <p className="card-description">
                     Check your AWS infrastructure for security vulnerabilities including S3 buckets, IAM roles, KMS encryption, and CloudTrail logging.
                   </p>
-                  {auditResults ? (
+                      {auditResults ? (
                     <div className="audit-result success">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                       </svg>
                       <div>
                         <h4>Audit Completed Successfully</h4>
-                        <p>{auditResults.message || "Your cloud infrastructure has been scanned. All security checks passed."}</p>
+                        <p>{escapeHtml(auditResults.message || "Your cloud infrastructure has been scanned. All security checks passed.")}</p>
                       </div>
                     </div>
                   ) : (

@@ -315,6 +315,9 @@ All API endpoints are versioned under `/api/v1/`. Interactive API documentation 
 | POST | `/api/v1/users/register/` | User registration |
 | POST | `/api/v1/users/login/` | User login (returns JWT tokens) |
 | POST | `/api/v1/users/logout/` | User logout |
+| POST | `/api/v1/users/password-reset/` | Request password reset email |
+| POST | `/api/v1/users/password-reset/confirm/` | Confirm password reset with token |
+| POST | `/api/v1/users/set-password/` | Set/change password (authenticated) |
 | GET | `/api/v1/users/me/` | Get current user profile |
 | PUT/PATCH | `/api/v1/users/me/` | Update current user profile |
 
@@ -478,8 +481,9 @@ METRICS_ENDPOINT=/metrics
 - Swagger/OpenAPI documentation at `/api/v1/docs/`
 - ReDoc documentation at `/api/v1/redoc/`
 - Full CRUD operations on all apps
-- React frontend with 12 pages
+- React frontend with 12+ pages
 - Frontend-backend API integration
+- Password reset flow (ForgotPassword, ResetPassword pages)
 
 ### Optional Features
 - Cloud Audits: Works with or without AWS credentials (returns demo data when not configured)

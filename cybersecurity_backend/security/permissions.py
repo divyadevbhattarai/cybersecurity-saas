@@ -72,6 +72,19 @@ class Permission(Enum):
     VIEW_REPORTS = 'view_reports'
     GENERATE_REPORTS = 'generate_reports'
 
+    # Compliance
+    VIEW_COMPLIANCE = 'view_compliance'
+    MANAGE_COMPLIANCE = 'manage_compliance'
+
+    # Dashboard
+    VIEW_DASHBOARD = 'view_dashboard'
+
+    # Threat Intelligence & Analytics
+    VIEW_THREATS = 'view_threats'
+    VIEW_LOGS = 'view_logs'
+    VIEW_ALERTS = 'view_alerts'
+    MANAGE_ALERTS = 'manage_alerts'
+
 
 # Role-Permission mapping (whitelist approach)
 ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
@@ -102,6 +115,7 @@ ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
         Permission.VIEW_REPORTS,
         Permission.GENERATE_REPORTS,
         Permission.VIEW_BILLING,
+        Permission.MANAGE_COMPLIANCE,
     },
     
     Role.SECURITY_ANALYST: {
@@ -120,6 +134,8 @@ ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
         Permission.EXPORT_DATA,
         Permission.VIEW_REPORTS,
         Permission.GENERATE_REPORTS,
+        Permission.VIEW_COMPLIANCE,
+        Permission.MANAGE_COMPLIANCE,
     },
     
     Role.AUDITOR: {
@@ -155,7 +171,11 @@ class PermissionChecker:
     
     def __init__(self, user):
         self.user = user
-        self.role = getattr(user, 'role', Role.USER)
+        role_str = getattr(user, 'role', 'user')
+        try:
+            self.role = Role(role_str)
+        except ValueError:
+            self.role = Role.USER
     
     def has_permission(self, permission: Permission) -> bool:
         """Check if user has specific permission via RBAC."""

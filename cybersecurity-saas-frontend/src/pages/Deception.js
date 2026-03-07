@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import api from "../services/axios";
 import { logoutUser } from "../store/authActions";
+import { useToast } from "../components/Toast";
+import { sanitizeInput } from "../utils";
 
 function Deception() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState("honeypots");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -16,6 +19,8 @@ function Deception() {
   const [showCreateToken, setShowCreateToken] = useState(false);
   const [newHoneypot, setNewHoneypot] = useState({ name: "", type: "http", port: 8080 });
   const [newToken, setNewToken] = useState({ name: "", type: "file", alert_email: "" });
+  const createHoneypotInProgress = useRef(false);
+  const createTokenInProgress = useRef(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -41,34 +46,59 @@ function Deception() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
 
   const createHoneypot = async (e) => {
     e.preventDefault();
+    if (createHoneypotInProgress.current) return;
+    createHoneypotInProgress.current = true;
+    const sanitizedHoneypot = {
+      name: sanitizeInput(newHoneypot.name),
+      type: newHoneypot.type,
+      port: Math.max(1, Math.min(65535, parseInt(newHoneypot.port) || 8080))
+    };
     try {
-      await api.post("/deception/honeypots/", newHoneypot);
+      await api.post("/deception/honeypots/", sanitizedHoneypot);
       setShowCreateHoneypot(false);
       setNewHoneypot({ name: "", type: "http", port: 8080 });
       fetchData();
+      toast.success("Honeypot created successfully");
     } catch (err) {
       setError("Failed to create honeypot");
+      toast.error("Failed to create honeypot");
+    } finally {
+      createHoneypotInProgress.current = false;
     }
   };
 
   const createCanaryToken = async (e) => {
     e.preventDefault();
+    if (createTokenInProgress.current) return;
+    createTokenInProgress.current = true;
+    const sanitizedToken = {
+      name: sanitizeInput(newToken.name),
+      type: newToken.type,
+      alert_email: sanitizeInput(newToken.alert_email)
+    };
     try {
-      await api.post("/deception/canary-tokens/", newToken);
+      await api.post("/deception/canary-tokens/", sanitizedToken);
       setShowCreateToken(false);
       setNewToken({ name: "", type: "file", alert_email: "" });
       fetchData();
+      toast.success("Canary token created successfully");
     } catch (err) {
       setError("Failed to create token");
+      toast.error("Failed to create canary token");
+    } finally {
+      createTokenInProgress.current = false;
     }
   };
 

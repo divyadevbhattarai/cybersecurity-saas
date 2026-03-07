@@ -2,16 +2,17 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import api from "../services/axios";
+import { useToast } from "../components/Toast";
 
 function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -23,20 +24,14 @@ function Login() {
         password,
       });
       
-      const tokenExpiry = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-      const expiryDate = new Date().getTime() + tokenExpiry;
-      
-      localStorage.setItem("access_token", response.data.access);
-      localStorage.setItem("token_expiry", expiryDate);
-      if (response.data.refresh) {
-        localStorage.setItem("refresh_token", response.data.refresh);
-      }
-      dispatch({ type: "LOGIN_USER", payload: response.data });
-      navigate("/dashboard");
+      dispatch({ type: "LOGIN_USER", payload: { username, ...response.data.data } });
+      toast.success("Login successful! Redirecting to dashboard...");
+      setTimeout(() => navigate("/dashboard"), 1000);
     } catch (err) {
       setError(
         err.response?.data?.detail || "Invalid username or password"
       );
+      toast.error(err.response?.data?.detail || "Invalid username or password");
     } finally {
       setLoading(false);
     }
@@ -140,6 +135,7 @@ function Login() {
                   type="button"
                   className="toggle-password"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
                     <svg viewBox="0 0 20 20" fill="currentColor">
@@ -157,14 +153,6 @@ function Login() {
             </div>
 
             <div className="form-options">
-              <label className="remember-me">
-                <input 
-                  type="checkbox" 
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                />
-                <span>Remember me</span>
-              </label>
               <Link to="/forgot-password" className="forgot-password">Forgot password?</Link>
             </div>
 

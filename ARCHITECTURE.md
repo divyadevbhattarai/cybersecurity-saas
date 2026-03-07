@@ -41,7 +41,7 @@ This document outlines the comprehensive system architecture for our cybersecuri
 - **React 18** with Redux for state management
 - **React Router** for navigation
 - **Axios** for HTTP requests to backend API
-- 12 pages: Dashboard, ZTNA, SOAR, RASP, Breaches, SBOM, Cloud Audits, Quantum Crypto, Deceptive Security, Confidential Computing, Privacy ML, Audit Trail
+- 14 pages: Dashboard, ZTNA, SOAR, RASP, Breaches, SBOM, Cloud Audits, Quantum Crypto, Deceptive Security, Confidential Computing, Privacy ML, Audit Trail, ForgotPassword, ResetPassword
 
 ### API Layer
 - **Django REST Framework** for REST API

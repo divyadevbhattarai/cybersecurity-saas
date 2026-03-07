@@ -6,6 +6,7 @@ from .models import User
 from django.contrib.auth.password_validation import validate_password
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
+from django.conf import settings
 from .account_lockout import AccountLockoutService
 from security.permissions import RoleBasedPermission, TenantPermission, Permission
 from security.middleware import TenantContext
@@ -28,6 +29,53 @@ class UserSerializer(serializers.ModelSerializer):
         validate_password(password)
         user = User.objects.create_user(**validated_data)
         return user
+
+
+class LogoutView(views.APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        response = success_response(message='Logout successful')
+        response.delete_cookie('access_token', path='/')
+        response.delete_cookie('refresh_token', path='/')
+        return response
+
+
+class CookieTokenRefreshView(views.APIView):
+    permission_classes = []
+    
+    def post(self, request):
+        refresh_token = request.COOKIES.get('refresh_token')
+        
+        if not refresh_token:
+            return error_response('No refresh token', 'AUTH_ERROR', status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            from rest_framework_simplejwt.tokens import RefreshToken
+            refresh = RefreshToken(refresh_token)
+            access_token = str(refresh.access_token)
+            
+            response = success_response(data={
+                'access': access_token
+            })
+            
+            secure = not settings.DEBUG
+            same_site = 'Lax'
+            
+            response.set_cookie(
+                'access_token',
+                access_token,
+                httponly=True,
+                secure=secure,
+                samesite=same_site,
+                path='/',
+                max_age=15 * 60
+            )
+            
+            return response
+        except Exception as e:
+            logger.error(f"Token refresh failed: {str(e)}")
+            return error_response('Invalid refresh token', 'AUTH_ERROR', status.HTTP_401_UNAUTHORIZED)
 
 
 class RegisterView(views.APIView):
@@ -84,15 +132,44 @@ class LoginView(views.APIView):
                 TenantContext.set_tenant(tenant_id, getattr(user, 'tenant_slug', None))
             
             refresh = RefreshToken.for_user(user)
+            refresh['tenant_id'] = tenant_id
+            refresh.access_token['tenant_id'] = tenant_id
+            
             logger.info(f"Successful login for user: {user.id} from {request.META.get('REMOTE_ADDR')}")
             
-            # Audit log successful login
             AuditLogger.log_login_success(request, user)
             
-            return success_response(data={
-                'refresh': str(refresh),
-                'access': str(refresh.access_token)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
+            
+            response = success_response(data={
+                'access': access_token,
+                'refresh': refresh_token
             }, message='Login successful')
+            
+            secure = not settings.DEBUG
+            same_site = 'Lax'
+            
+            response.set_cookie(
+                'access_token',
+                access_token,
+                httponly=True,
+                secure=secure,
+                samesite=same_site,
+                path='/',
+                max_age=15 * 60
+            )
+            response.set_cookie(
+                'refresh_token',
+                refresh_token,
+                httponly=True,
+                secure=secure,
+                samesite=same_site,
+                path='/',
+                max_age=24 * 60 * 60
+            )
+            
+            return response
         
         # Failed login - record attempt but use generic message
         AccountLockoutService.record_failed_login(user)

@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import api from "../services/axios";
 import { logoutUser } from "../store/authActions";
+import { useToast } from "../components/Toast";
+import { sanitizeInput } from "../utils";
 
 function QuantumCrypto() {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState("keys");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -14,6 +17,8 @@ function QuantumCrypto() {
   const [algorithms, setAlgorithms] = useState([]);
   const [showCreateKey, setShowCreateKey] = useState(false);
   const [newKey, setNewKey] = useState({ name: "", algorithm: "kyber512", key_size: 256 });
+  const createKeyInProgress = useRef(false);
+  const rotateKeyInProgress = useRef(false);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -39,34 +44,53 @@ function QuantumCrypto() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
+  const handleLogout = async () => {
+    try {
+      await api.post("/users/logout/");
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     dispatch(logoutUser());
     navigate("/");
   };
 
   const createKey = async (e) => {
     e.preventDefault();
+    if (createKeyInProgress.current) return;
+    createKeyInProgress.current = true;
+    const sanitizedKey = {
+      name: sanitizeInput(newKey.name),
+      algorithm: newKey.algorithm,
+      key_size: Math.max(128, Math.min(512, parseInt(newKey.key_size) || 256))
+    };
     try {
-      await api.post("/quantum-crypto/keys/", newKey);
+      await api.post("/quantum-crypto/keys/", sanitizedKey);
       setShowCreateKey(false);
       setNewKey({ name: "", algorithm: "kyber512", key_size: 256 });
       fetchData();
+      toast.success("Quantum key created successfully");
     } catch (err) {
       setError("Failed to create key");
+      toast.error("Failed to create quantum key");
+    } finally {
+      createKeyInProgress.current = false;
     }
   };
 
   const rotateKey = async (keyId) => {
+    if (rotateKeyInProgress.current) return;
+    rotateKeyInProgress.current = true;
     try {
       setLoading(true);
       await api.post(`/quantum-crypto/keys/${keyId}/rotate/`);
       fetchData();
+      toast.success("Key rotated successfully");
     } catch (err) {
       console.error("Error rotating key", err);
+      toast.error("Failed to rotate key");
     } finally {
       setLoading(false);
+      rotateKeyInProgress.current = false;
     }
   };
 

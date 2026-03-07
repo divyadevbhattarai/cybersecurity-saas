@@ -8,9 +8,9 @@ const WebSocketComponent = () => {
   const maxReconnectAttempts = 5;
 
   const connectWebSocket = () => {
-    const wsUrl = process.env.REACT_APP_WS_URL
+    const wsUrl = process.env.REACT_APP_WS_URL 
       ? `${process.env.REACT_APP_WS_URL}/anomaly_alerts/`
-      : "wss://localhost:8000/ws/anomaly_alerts/";
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/anomaly_alerts/`;
 
     try {
       socketRef.current = new WebSocket(wsUrl);
@@ -65,6 +65,7 @@ const WebSocketComponent = () => {
         socketRef.current.close();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
